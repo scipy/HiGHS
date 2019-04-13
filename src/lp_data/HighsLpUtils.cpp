@@ -639,9 +639,9 @@ HighsStatus append_lp_cols(HighsLp& lp,
   return_status = worseStatus(call_status, return_status);
   if (return_status == HighsStatus::Error) return return_status;
   if (valid_matrix) {
-    // Normalise the new LP matrix columns
+    // Normalise the new LP matrix columns [lp.numCol_, newNumCol)
     int lp_num_nz = lp.Astart_[newNumCol];
-    call_status = assessMatrix(lp.numRow_, 0, num_new_col, num_new_col,
+    call_status = assessMatrix(lp.numRow_, lp.numCol_, newNumCol, newNumCol,
 			       lp_num_nz, &lp.Astart_[0], &lp.Aindex_[0], &lp.Avalue_[0],
 			       options.small_matrix_value, options.large_matrix_value, normalise);
     lp.Astart_[newNumCol] = lp_num_nz;

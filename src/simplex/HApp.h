@@ -181,7 +181,7 @@ HighsStatus runSimplexSolver(const HighsOptions& opt,
 
   // Copy the LP to the structure to be used by the solver
   simplex_lp = lp;
-
+  simplex_lp_status.valid = true;
   // Set simplex options from HiGHS options
   options(highs_model_object, opt);
 

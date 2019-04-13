@@ -389,7 +389,6 @@ TEST_CASE("LP-modification", "[highs_data]") {
 
   //  messageReportLp("After deleting columns 1, 3, 5, 7", reference_lp);
 
-  /*
   return_bool = highs.addCols(col1357_num_col, col1357_cost, col1357_lower, col1357_upper,
 			      col1357_num_nz, col1357_start, col1357_index, col1357_value);
   REQUIRE(return_bool);
@@ -420,9 +419,7 @@ TEST_CASE("LP-modification", "[highs_data]") {
   return_bool = highs.addRows(num_row, &rowLower[0], &rowUpper[0], num_row_nz, &ARstart[0], &ARindex[0], &ARvalue[0]);
   REQUIRE(return_bool);
 
-   messageReportLp("With columns and rows", reference_lp);
-
-
+  messageReportLp("With columns and rows", reference_lp);
 
   // Getting rows from the LP is OK
   int row0135789_row_set[] = {0, 1, 3, 5, 7, 8, 9};
@@ -678,6 +675,5 @@ TEST_CASE("LP-modification", "[highs_data]") {
 
   messageReportLp("After restoring costs and bounds", reference_lp);
   printf("Finished successfully\n"); fflush(stdout);
-  */
 }
 
