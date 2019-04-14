@@ -319,7 +319,7 @@ int OsiHiGHSSolverInterface::getNumRows() const {
 int OsiHiGHSSolverInterface::getNumElements() const {
   HighsPrintMessage(ML_ALWAYS,
                     "Calling OsiHiGHSSolverInterface::getNumElements()\n");
-  return this->highs->lp_.nnz_;
+  return this->highs->lp_.Astart_[this->highs->lp_.numCol_];
 }
 
 const double *OsiHiGHSSolverInterface::getColLower() const {
@@ -660,7 +660,7 @@ void OsiHiGHSSolverInterface::loadProblem(
 
   lp.numRow_ = numrows;
   lp.numCol_ = numcols;
-  lp.nnz_ = start[numcols];
+  lp.numInt_ = 0;
 
   // setup HighsLp data structures
   lp.colCost_.resize(numcols);

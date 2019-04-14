@@ -72,6 +72,7 @@ HighsLp& PresolveInfo::getReducedProblem() {
       // any more.
       reduced_lp_.numCol_ = presolve_[0].numCol;
       reduced_lp_.numRow_ = presolve_[0].numRow;
+      reduced_lp_.numInt_ = 0;
       reduced_lp_.Astart_ = std::move(presolve_[0].Astart);
       reduced_lp_.Aindex_ = std::move(presolve_[0].Aindex);
       reduced_lp_.Avalue_ = std::move(presolve_[0].Avalue);
@@ -82,7 +83,6 @@ HighsLp& PresolveInfo::getReducedProblem() {
       reduced_lp_.rowUpper_ = std::move(presolve_[0].rowUpper);
 
       reduced_lp_.sense_ = 1;
-      reduced_lp_.nnz_ = reduced_lp_.Avalue_.size();
     }
   }
   return reduced_lp_;

@@ -44,7 +44,7 @@ HighsStatus loadLpFromFile(const HighsOptions &options, HighsLp &lp)
       break;
   }
 
-  lp.nnz_ = lp.Avalue_.size();
+  lp.nnz_ = lp.Avalue_.size(); // Commenting this out causes no end of problem with free-format-parser and/or read-mps-ems unit tests. ToDo Resolve this
 
   // Extract model name.
   std::string name = options.filename;

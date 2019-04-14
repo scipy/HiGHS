@@ -124,7 +124,7 @@ int setupProblem(
 
    gh->lp->numRow_ = numRow;
    gh->lp->numCol_ = numCol;
-   gh->lp->nnz_ = numNz;
+   gh->lp->numInt_ = 0;
 
    /* columns */
    gh->lp->colUpper_.resize(numCol);
@@ -176,6 +176,8 @@ int setupProblem(
    gh->lp->Avalue_.resize(numNz);
    gmoGetMatrixCol(gh->gmo, &gh->lp->Astart_[0], &gh->lp->Aindex_[0], &gh->lp->Avalue_[0], NULL);
 
+   assert(numNz == gh->lp->Astart_[gh->lp->numCol_]);
+   printf("For GAMS interface is numNz = %d = %d = gh->lp->Astart_[gh->lp->numCol_]\n", numNz,  gh->lp->Astart_[gh->lp->numCol_]);
    gh->highs->initializeLp(*gh->lp);
 
    //FilereaderLp().writeModelToFile("highs.lp", *gh->lp);

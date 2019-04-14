@@ -62,9 +62,6 @@ HighsStatus checkLp(const HighsLp& lp) {
 
   if (lp.numCol_ > 0) {
     if ((int)lp.Astart_.size() < lp.numCol_ + 1) return HighsStatus::LpError;
-    // Was lp.Astart_[i] >= lp.nnz_ (below), but this is wrong when the
-    // last column is empty. Need to check as follows, and also check
-    // the entry lp.Astart_[lp.numCol_] > lp.nnz_
     for (int i = 0; i < lp.numCol_; i++) {
       if (lp.Astart_[i] > lp.Astart_[i + 1] || lp.Astart_[i] > lp_num_nz ||
 	  lp.Astart_[i] < 0)
@@ -74,7 +71,7 @@ HighsStatus checkLp(const HighsLp& lp) {
 	lp.Astart_[lp.numCol_] < 0)
       return HighsStatus::LpError;
 
-    for (int k = 0; k < lp.nnz_; k++) {
+    for (int k = 0; k < lp.Astart_[lp.numCol_]; k++) {
       if (lp.Aindex_[k] < 0 || lp.Aindex_[k] >= lp.numRow_)
 	return HighsStatus::LpError;
       if (lp.Avalue_[k] < -HIGHS_CONST_INF || lp.Avalue_[k] > HIGHS_CONST_INF)

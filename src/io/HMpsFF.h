@@ -125,7 +125,8 @@ FreeFormatParserReturnCode HMpsFF::loadProblem(const std::string filename, Highs
 
   lp.numRow_ = std::move(numRow);
   lp.numCol_ = std::move(numCol);
-  lp.nnz_ = Avalue.size();
+  //  lp.nnz_ = Avalue.size();
+  lp.numInt_ = 0;
 
   lp.sense_ = 1;
   lp.offset_ = objOffset;

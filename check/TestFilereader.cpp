@@ -43,7 +43,7 @@ TEST_CASE("free-format-parser", "[highs_filereader]") {
 		       lp_fixed_format.colUpper_, lp_fixed_format.rowLower_,
 		       lp_fixed_format.rowUpper_, integerColumn,
 		       lp_fixed_format.col_names_, lp_fixed_format.row_names_);
-  lp_fixed_format.nnz_ = lp_fixed_format.Avalue_.size();
+  lp_fixed_format.nnz_ = lp_fixed_format.Avalue_.size(); // Commenting this out causes no end of problem with free-format-parser and/or read-mps-ems unit tests. ToDo Resolve this
   if (!status) {
     HMpsFF parser{};
     FreeFormatParserReturnCode result = parser.loadProblem(filename, lp_free_format);
