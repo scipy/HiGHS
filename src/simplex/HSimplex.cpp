@@ -1097,7 +1097,7 @@ void initialiseSimplexLpRandomVectors(HighsModelObject& highs_model_object) {
   simplex_info.numTotRandomValue_.resize(numTot);
   double* numTotRandomValue = &simplex_info.numTotRandomValue_[0];
   for (int i = 0; i < numTot; i++) {
-    numTotRandomValue[i] = random.fraction();
+    simplex_info.numTotRandomValue_.push_back(random.fraction());
   }
 }
 
