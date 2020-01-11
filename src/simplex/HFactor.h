@@ -237,6 +237,13 @@ class HFactor {
   // Problem size, coefficient matrix and update method
   int numRow;
   int numCol;
+#ifdef HiGHSDEV
+  int num_ftran_upper_hys = 0;
+  int num_zero_rhs_change = 0;
+  int original_rhs_count;
+  vector<int> original_rhs_index;
+  vector<double> original_rhs_array;
+#endif
  private:
   const int* Astart;
   const int* Aindex;

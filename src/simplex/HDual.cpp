@@ -1426,6 +1426,7 @@ void HDual::updateFtran() {
   // Perform FTRAN
   factor->ftran(col_aq, analysis->col_aq_density);
 #ifdef HiGHSDEV
+  printf("FTRAN_AQ  : Count %6d; Current %10.4g; Historical %10.4g\n\n", col_aq.count, (1.0 * col_aq.count)/solver_num_row, analysis->col_aq_density);
   if (simplex_info.analyse_iterations)
     analysis->operationRecordAfter(ANALYSIS_OPERATION_TYPE_FTRAN, col_aq);
 #endif
@@ -1460,6 +1461,7 @@ void HDual::updateFtranBFRT() {
 #endif
     // Perform FTRAN BFRT
     factor->ftran(col_BFRT, analysis->col_aq_density);
+    printf("FTRAN_BFRT: Count %6d; Current %10.4g; Historical %10.4g\n\n", col_BFRT.count, (1.0 * col_BFRT.count)/solver_num_row, analysis->col_aq_density);
 #ifdef HiGHSDEV
     if (simplex_info.analyse_iterations)
       analysis->operationRecordAfter(ANALYSIS_OPERATION_TYPE_FTRAN_BFRT, col_BFRT);
@@ -1485,6 +1487,7 @@ void HDual::updateFtranDSE(HVector* DSE_Vector) {
 #endif
   // Perform FTRAN DSE
   factor->ftran(*DSE_Vector, analysis->row_DSE_density);
+  printf("FTRAN_DSE : Count %6d; Current %10.4g; Historical %10.4g\n\n", (*DSE_Vector).count, (1.0 * (*DSE_Vector).count)/solver_num_row, analysis->row_DSE_density);
 #ifdef HiGHSDEV
   if (simplex_info.analyse_iterations)
     analysis->operationRecordAfter(ANALYSIS_OPERATION_TYPE_FTRAN_DSE, *DSE_Vector);

@@ -21,7 +21,7 @@
 
 void printHighsVersionCopyright(FILE* output, const int message_level,
                                 const char* message = nullptr);
-void reprotLpStatsOrError(FILE* output, int message_level,
+void reportLpStatsOrError(FILE* output, int message_level,
                           const HighsStatus read_status, const HighsLp& lp);
 void reportSolvedLpStats(FILE* output, int message_level,
                          const HighsStatus run_status, const Highs& highs);
@@ -44,25 +44,10 @@ int main(int argc, char** argv) {
   output = options.output;
   message_level = options.message_level;
 
-  bool run_quiet = false;  // true;//
+  bool run_quiet = false;// true;//
   if (run_quiet) {
     HighsPrintMessage(output, message_level, ML_ALWAYS,
                       "In main: running highs.run() quietly\n");
-  }
-
-  // todo: remove once J's debug conf works.
-  bool force_options_file = false;  // true;//
-  if (force_options_file) {
-    HighsPrintMessage(
-        output, message_level, ML_ALWAYS,
-        "In main: set options.options_file = Options.set so vscode can be "
-        "used to debug\n");
-    options.options_file = "Options.set";
-    if (!loadOptionsFromFile(options)) {
-      HighsPrintMessage(output, message_level, ML_ALWAYS,
-                        "In main: fail return from loadOptionsFromFile\n");
-      return (int)HighsStatus::Error;
-    }
   }
 
   output = options.output;
@@ -71,7 +56,7 @@ int main(int argc, char** argv) {
   // Load problem.
   HighsLp lp;
   HighsStatus read_status = loadLpFromFile(options, lp);
-  reprotLpStatsOrError(output, message_level, read_status, lp);
+  reportLpStatsOrError(output, message_level, read_status, lp);
   if (read_status == HighsStatus::Error) return (int)HighsStatus::Error;
 
   // Run LP or MIP solver.
@@ -134,7 +119,7 @@ void printHighsVersionCopyright(FILE* output, const int message_level,
 #endif
 }
 
-void reprotLpStatsOrError(FILE* output, int message_level,
+void reportLpStatsOrError(FILE* output, int message_level,
                           const HighsStatus read_status, const HighsLp& lp) {
   if (read_status == HighsStatus::Error) {
     HighsPrintMessage(output, message_level, ML_ALWAYS, "Error loading file\n");

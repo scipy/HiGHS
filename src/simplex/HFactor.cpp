@@ -181,6 +181,13 @@ void HFactor::setup(int numCol_, int numRow_, const int* Astart_,
   iwork.reserve(numRow * 2);
   dwork.assign(numRow, 0);
 
+#ifdef HiGHSDEV
+  num_ftran_upper_hys = 0;
+  num_zero_rhs_change = 0;
+  original_rhs_index.assign(numRow, 0);
+  original_rhs_array.assign(numRow, 0);
+#endif
+
   // Find Basis matrix limit size
   int BlimitX = 0;
   iwork.assign(numRow + 1, 0);
@@ -266,6 +273,7 @@ void HFactor::setup(int numCol_, int numRow_, const int* Astart_,
 #endif
   FactorTimer factor_timer;
   timer_.resetHighsTimer();
+  timer_.startRunHighsClock();
   factor_timer.initialiseFactorClocks(timer_, clock_);
 #endif
 }
@@ -1440,13 +1448,66 @@ void HFactor::ftranU(HVector& rhs, double hist_dsty){ // FactorTimer frig const{
   } else {
 #ifdef HiGHSDEV
     if (omp_max_threads <= 1) timer_.start(clock_[FactorFtranUpperHys]);
+    const bool check_zero_error = false;
+    if (check_zero_error) {
+      double zero_error = 0;
+      for (int iRow = 0; iRow < numRow; iRow++) {
+	zero_error += fabs(original_rhs_array[iRow]);
+	original_rhs_array[iRow] = 0;
+      }
+      if (zero_error)
+	printf("STRANGE: original_rhs_array has norm %g\n", zero_error);
+    }
+    num_ftran_upper_hys++;
+    original_rhs_count = rhs.count;
+    for (int el = 0; el < original_rhs_count; el++) {
+      const int iRow = rhs.index[el];
+      original_rhs_index[el] = iRow;
+      original_rhs_array[iRow] = rhs.array[iRow];
+    }
 #endif
     const int* Uindex = this->Uindex.size() > 0 ? &this->Uindex[0] : NULL;
     const double* Uvalue = this->Uvalue.size() > 0 ? &this->Uvalue[0] : NULL;
     solveHyper(numRow, &UpivotLookup[0], &UpivotIndex[0], &UpivotValue[0],
                &Ustart[0], &Ulastp[0], &Uindex[0], &Uvalue[0], &rhs);
 #ifdef HiGHSDEV
+    if (rhs.count < 0 || rhs.count > numRow) {
+      printf("STRANGE: rhs.count = %d < 0 || rhs.count = %d > %d = numRow\n",
+	     rhs.count, rhs.count, numRow);
+    }
+    int num_rhs_difference = 0;
+    for (int el = 0; el < rhs.count; el++) {
+      const int iRow = rhs.index[el];
+      const double rhs_difference = fabs(rhs.array[iRow] - original_rhs_array[iRow]);
+      if (rhs_difference) {
+	num_rhs_difference++;
+	//	printf("Change %2d in RHS[%6d] is difference %g\n", num_rhs_difference, iRow, rhs_difference);
+      }
+      original_rhs_array[iRow] = 0;
+    }
+    int num_rhs_zeroing = 0;
+    for (int el = 0; el < original_rhs_count; el++) {
+      const int iRow = original_rhs_index[el];
+      const double rhs_zeroing = fabs(original_rhs_array[iRow]);
+      if (rhs_zeroing) {
+	//	printf("Change %2d in RHS[%6d] is zeroing    %g\n", num_rhs_zeroing, iRow, rhs_zeroing);
+	num_rhs_zeroing++;
+      }
+      original_rhs_array[iRow] = 0;
+    }
+    int num_rhs_change = num_rhs_difference + num_rhs_zeroing;
+    if (!num_rhs_change) num_zero_rhs_change++;
     if (omp_max_threads <= 1) timer_.stop(clock_[FactorFtranUpperHys]);
+    printf("FactorFtranUpperHys: (%6d / %6d) count %6d -> %6d; density %10.4g -> %10.4g; with zero change",
+	   num_zero_rhs_change, num_ftran_upper_hys,
+	   original_rhs_count, rhs.count,
+	   1.0 * original_rhs_count / numRow, 1.0 * rhs.count / numRow);
+    if (num_rhs_change) {
+      printf(" [%6d difference; %6d zeroing]\n",
+	   num_rhs_difference, num_rhs_zeroing);
+    } else {
+      printf("\n");
+    }
 #endif
   }
 
