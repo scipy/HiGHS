@@ -296,31 +296,6 @@ basis_.valid_, hmos_[0].basis_.valid_);
   if (return_status == HighsStatus::Error) return return_status;
 #endif
 
-  if (options_.icrash) {
-    ICrashStrategy strategy = ICrashStrategy::kICA;
-    bool strategy_ok = parseICrashStrategy(options_.icrash_strategy, strategy);
-    if (!strategy_ok) {
-      HighsPrintMessage(options_.output, options_.message_level, ML_ALWAYS,
-                        "ICrash error: unknown strategy.\n");
-      return HighsStatus::Error;
-    }
-    ICrashOptions icrash_options{
-        options_.icrash_dualize,
-        strategy,
-        options_.icrash_starting_weight,
-        options_.icrash_iterations,
-        options_.icrash_approximate_minimization_iterations,
-        options_.icrash_exact,
-        options_.icrash_breakpoints,
-        options_.logfile,
-        options_.output,
-        options_.message_level};
-
-    // todo: timing. some strange compile issue.
-    HighsStatus icrash_status = callICrash(lp_, icrash_options, icrash_info_);
-    return icrash_status;
-  }
-
   // Return immediately if the LP has no columns
   if (!lp_.numCol_) {
     hmos_[0].unscaled_model_status_ = HighsModelStatus::MODEL_EMPTY;
@@ -393,6 +368,9 @@ basis_.valid_, hmos_[0].basis_.valid_);
       }
       case HighsPresolveStatus::NotReduced: {
         hmos_[solved_hmo].lp_.lp_name_ = "Unreduced LP";
+        // Log the presolve reductions
+        logPresolveReductions(hmos_[original_hmo].options_,
+                              hmos_[original_hmo].lp_, false);
         this_solve_original_lp_time = -timer_.read(timer_.solve_clock);
         timer_.start(timer_.solve_clock);
         call_status =
@@ -431,7 +409,10 @@ basis_.valid_, hmos_[0].basis_.valid_);
         break;
       }
       case HighsPresolveStatus::ReducedToEmpty: {
-        hmos_[0].unscaled_model_status_ = HighsModelStatus::OPTIMAL;
+        logPresolveReductions(hmos_[original_hmo].options_,
+                              hmos_[original_hmo].lp_, true);
+        hmos_[original_hmo].scaled_model_status_ = HighsModelStatus::OPTIMAL;
+        hmos_[original_hmo].unscaled_model_status_ = HighsModelStatus::OPTIMAL;
         // Proceed to postsolve.
         break;
       }
@@ -440,9 +421,13 @@ basis_.valid_, hmos_[0].basis_.valid_);
       case HighsPresolveStatus::Infeasible:
       case HighsPresolveStatus::Unbounded: {
         if (presolve_status == HighsPresolveStatus::Infeasible) {
+          hmos_[original_hmo].scaled_model_status_ =
+              HighsModelStatus::PRIMAL_INFEASIBLE;
           hmos_[original_hmo].unscaled_model_status_ =
               HighsModelStatus::PRIMAL_INFEASIBLE;
         } else {
+          hmos_[original_hmo].scaled_model_status_ =
+              HighsModelStatus::PRIMAL_UNBOUNDED;
           hmos_[original_hmo].unscaled_model_status_ =
               HighsModelStatus::PRIMAL_UNBOUNDED;
         }
@@ -653,8 +638,6 @@ basis_.valid_, hmos_[0].basis_.valid_);
 const HighsLp& Highs::getLp() const { return lp_; }
 
 const HighsSolution& Highs::getSolution() const { return solution_; }
-
-const ICrashInfo& Highs::getICrashInfo() const { return icrash_info_; }
 
 const HighsBasis& Highs::getBasis() const { return basis_; }
 
@@ -1306,11 +1289,20 @@ HighsPresolveStatus Highs::runPresolve(PresolveInfo& info) {
   info.presolve_[0].load(*(info.lp_));
 
   // Initialize a new presolve class instance for the LP given in presolve info
-  return info.presolve_[0].presolve();
+  HighsPresolveStatus presolve_return_status = info.presolve_[0].presolve();
+
+  if (presolve_return_status == HighsPresolveStatus::Reduced &&
+      info.lp_->sense_ == -1)
+    info.negateReducedCosts();
+
+  return presolve_return_status;
 }
 
 HighsPostsolveStatus Highs::runPostsolve(PresolveInfo& info) {
   if (info.presolve_.size() != 0) {
+    // Handle max case.
+    if (info.lp_->sense_ == -1) info.negateColDuals(true);
+
     bool solution_ok =
         isSolutionConsistent(info.getReducedProblem(), info.reduced_solution_);
     if (!solution_ok)
@@ -1319,6 +1311,8 @@ HighsPostsolveStatus Highs::runPostsolve(PresolveInfo& info) {
     // todo: error handling + see todo in run()
     info.presolve_[0].postsolve(info.reduced_solution_,
                                 info.recovered_solution_);
+
+    if (info.lp_->sense_ == -1) info.negateColDuals(false);
 
     return HighsPostsolveStatus::SolutionRecovered;
   } else {
@@ -1403,8 +1397,11 @@ HighsStatus Highs::writeSolution(const std::string filename,
       interpretCallStatus(call_status, return_status, "openWriteFile");
   if (return_status == HighsStatus::Error) return return_status;
 
-  writeSolutionToFile(file, lp, basis, solution, pretty);
-  return HighsStatus::OK;
+  std::cout << "warning: Feature under development" << std::endl;
+  return HighsStatus::Warning;
+
+  // writeSolutionToFile(file, lp, basis, solution, pretty);
+  // return HighsStatus::OK;
 }
 
 bool Highs::updateHighsSolutionBasis() {

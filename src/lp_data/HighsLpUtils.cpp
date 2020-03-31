@@ -1841,38 +1841,38 @@ void analyseLp(const HighsLp& lp, const char* message) {
 }
 #endif
 
-void writeSolutionToFile(FILE* file, const HighsLp& lp, const HighsBasis& basis,
-                         const HighsSolution& solution, const bool pretty) {
-  if (pretty) {
-    reportModelBoundSol(file, true, lp.numCol_, lp.colLower_, lp.colUpper_,
-                        lp.col_names_, solution.col_value, solution.col_dual,
-                        basis.col_status);
-    reportModelBoundSol(file, false, lp.numRow_, lp.rowLower_, lp.rowUpper_,
-                        lp.row_names_, solution.row_value, solution.row_dual,
-                        basis.row_status);
-  } else {
-    fprintf(file,
-            "%d %d : Number of columns and rows for primal and dual solution "
-            "and basis\n",
-            lp.numCol_, lp.numRow_);
-    const bool with_basis = basis.valid_;
-    if (with_basis) {
-      fprintf(file, "T\n");
-    } else {
-      fprintf(file, "F\n");
-    }
-    for (int iCol = 0; iCol < lp.numCol_; iCol++) {
-      fprintf(file, "%g %g", solution.col_value[iCol], solution.col_dual[iCol]);
-      if (with_basis) fprintf(file, " %d", (int)basis.col_status[iCol]);
-      fprintf(file, " \n");
-    }
-    for (int iRow = 0; iRow < lp.numRow_; iRow++) {
-      fprintf(file, "%g %g", solution.row_value[iRow], solution.row_dual[iRow]);
-      if (with_basis) fprintf(file, " %d", (int)basis.row_status[iRow]);
-      fprintf(file, " \n");
-    }
-  }
-}
+// void writeSolutionToFile(FILE* file, const HighsLp& lp, const HighsBasis&
+// basis,
+//                          const HighsSolution& solution, const bool pretty) {
+//   if (pretty) {
+//     reportModelBoundSol(file, true, lp.numCol_, lp.colLower_, lp.colUpper_,
+//                         lp.col_names_, solution.col_value, solution.col_dual,
+//                         basis.col_status);
+//     reportModelBoundSol(file, false, lp.numRow_, lp.rowLower_, lp.rowUpper_,
+//                         lp.row_names_, solution.row_value, solution.row_dual,
+//                         basis.row_status);
+//   } else {
+//     fprintf(file,
+//             "%d %d : Number of columns and rows for primal and dual solution
+//             " "and basis\n", lp.numCol_, lp.numRow_);
+//     const bool with_basis = basis.valid_;
+//     if (with_basis) {
+//       fprintf(file, "T\n");
+//     } else {
+//       fprintf(file, "F\n");
+//     }
+//     for (int iCol = 0; iCol < lp.numCol_; iCol++) {
+//       fprintf(file, "%g %g", solution.col_value[iCol],
+//       solution.col_dual[iCol]); if (with_basis) fprintf(file, " %d",
+//       (int)basis.col_status[iCol]); fprintf(file, " \n");
+//     }
+//     for (int iRow = 0; iRow < lp.numRow_; iRow++) {
+//       fprintf(file, "%g %g", solution.row_value[iRow],
+//       solution.row_dual[iRow]); if (with_basis) fprintf(file, " %d",
+//       (int)basis.row_status[iRow]); fprintf(file, " \n");
+//     }
+//   }
+// }
 
 HighsStatus convertBasis(const HighsLp& lp, const SimplexBasis& basis,
                          HighsBasis& new_basis) {
@@ -2413,6 +2413,34 @@ void logPresolveReductions(const HighsOptions& options, const HighsLp& lp,
                   num_col_to, (num_col_from - num_col_to), num_row_to,
                   (num_row_from - num_row_to), num_els_to,
                   (num_els_from - num_els_to));
+}
+
+void logPresolveReductions(const HighsOptions& options, const HighsLp& lp,
+                           const bool presolve_to_empty) {
+  int num_col_from = lp.numCol_;
+  int num_row_from = lp.numRow_;
+  int num_els_from = lp.Astart_[num_col_from];
+  int num_col_to;
+  int num_row_to;
+  int num_els_to;
+  std::string message;
+  if (presolve_to_empty) {
+    num_col_to = 0;
+    num_row_to = 0;
+    num_els_to = 0;
+    message = "- Reduced to empty";
+  } else {
+    num_col_to = num_col_from;
+    num_row_to = num_row_from;
+    num_els_to = num_els_from;
+    message = "- Not reduced";
+  }
+  HighsLogMessage(options.logfile, HighsMessageType::INFO,
+                  "Presolve reductions: columns %d(-%d); rows %d(-%d) "
+                  "elements %d(-%d) %s",
+                  num_col_to, (num_col_from - num_col_to), num_row_to,
+                  (num_row_from - num_row_to), num_els_to,
+                  (num_els_from - num_els_to), message.c_str());
 }
 
 bool isLessInfeasibleDSECandidate(const HighsOptions& options,
