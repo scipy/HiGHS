@@ -8,8 +8,8 @@ from libcpp.memory cimport unique_ptr, make_unique
 
 cimport numpy as np
 import numpy as np
-from scipy.sparse import csc_matrix
-from scipy.optimize import OptimizeResult
+#from scipy.sparse import csc_matrix
+#from scipy.optimize import OptimizeResult
 from warnings import warn
 
 from HConst cimport (
@@ -294,7 +294,7 @@ def highs_wrapper(
 
     Returns
     -------
-    res : OptimizeResult
+    res : dict
 
         - col_basis_status : dict
             Key: `'statuses'` contains `n` status codes corresponding
@@ -348,9 +348,11 @@ def highs_wrapper(
     .. [2] https://www.maths.ed.ac.uk/hall/HiGHS/HighsOptions.html
     '''
 
-    # Try to cast, it'll raise a type error if it don't work
-    if not isinstance(A, csc_matrix):
-        A = csc_matrix(A).astype('double')
+    # Assume we are working with a sparse matrix for now;
+    # Try to decouple scikit-highs and scipy for easier development
+    # with both locally installed
+    # if not isinstance(A, csc_matrix):
+    #     A = csc_matrix(A)
 
     # Get dimensions of problem
     cdef int numrow = A.shape[0]
@@ -378,29 +380,50 @@ def highs_wrapper(
     colupper = &ub[0]
 
     # LHS/RHS constraints
-    cdef double * rowlower
+    cdef double * rowlower = NULL
+    cdef double * rowupper = NULL
     if lhs is None:
         # Default to no LHS (all -Inf)
         lhs = HIGHS_CONST_TINY*np.ones(numrow, dtype='double')
-    rowlower = &lhs[0]
-    cdef double * rowupper = &rhs[0]
 
     # Contents of constraint matrices as memoryviews
-    cdef int[::1] astart = A.indptr
-    cdef int[::1] aindex = A.indices
-    cdef double[::1] avalue = A.data
+    cdef int[::1] Aindptr = A.indptr
+    cdef int[::1] Aindices = A.indices
+    cdef double[::1] Adata = A.data
+    cdef int * astart = NULL
+    cdef int * aindex = NULL
+    cdef double * avalue = NULL
 
     # Allocate memoryviews to hold results
     cdef double[::1] colvalue = np.empty(numcol, dtype='double')
     cdef double[::1] coldual = np.empty(numcol, dtype='double')
-    cdef double[::1] rowvalue = np.empty(numcol, dtype='double')
-    cdef double[::1] rowdual = np.empty(numcol, dtype='double')
+    cdef double[::1] rowvalue = np.empty(numrow, dtype='double')
+    cdef double[::1] rowdual = np.empty(numrow, dtype='double')
+    cdef double * rowvalue_ptr = NULL
+    cdef double * rowdual_ptr = NULL
 
     # Result status flags
     cdef int[::1] colbasisstatus = np.empty(numcol, dtype=np.int32)
     cdef int[::1] rowbasisstatus = np.empty(numrow, dtype=np.int32)
+    cdef int * rowbasisstatus_ptr = NULL
     cdef int modelstatus = 0
 
+    # If we have no rows, then we can't index into the memoryviews to get pointers
+    if numrow > 0:
+        rowlower = &lhs[0]
+        rowupper = &rhs[0]
+        rowvalue_ptr = &rowvalue[0]
+        rowdual_ptr = &rowdual[0]
+        rowbasisstatus_ptr = &rowbasisstatus[0]
+    if Aindptr.size > 0:
+        astart = &Aindptr[0]
+    if Aindices.size > 0:
+        aindex = &Aindices[0]
+    if Adata.size > 0:
+        avalue = &Adata[0]
+
+
+    # Instantiate the HiGHS object that will hold the model
     cdef Highs highs
 
     # Apply any options
@@ -410,15 +433,19 @@ def highs_wrapper(
     cdef int ret = Highs_call(
         numcol, numrow, numnz,
         colcost, collower, colupper,
-        &rowlower[0], rowupper,
-        &astart[0], &aindex[0], &avalue[0],
-        &colvalue[0], &coldual[0], &rowvalue[0], &rowdual[0],
-        &colbasisstatus[0], &rowbasisstatus[0], &modelstatus,
+        rowlower, rowupper,
+        astart, aindex, avalue,
+        &colvalue[0], &coldual[0], rowvalue_ptr, rowdual_ptr,
+        &colbasisstatus[0], rowbasisstatus_ptr, &modelstatus,
         highs)
 
-    # If the model is unset, it means we've encountered an error during optimization -- quit out now!
+    # Pull info out of out of highs
+    cdef HighsInfo info = highs.getHighsInfo()
+
+    # If the model is unset, it means we've encountered an error during optimization
     if modelstatus == 0:
-        raise RuntimeError("Model failed during optimization! Try `presolve=False` and/or `method='simplex'`")
+        # It could also mean that the problem is unbounded
+        raise RuntimeError("Model failed during optimization! Could be unbounded! Try `presolve=False` and/or `method='simplex'`")
 
     # Maybe write to file
     if options.get('write_solution_to_file', None):
@@ -428,6 +455,7 @@ def highs_wrapper(
 
     # Decode HighsBasisStatus:
     HighsBasisStatusToStr = {
+        -1 : 'unset',
         <int>LOWER: 'LOWER: (slack) variable is at its lower bound [including fixed variables]',
         <int>BASIC: 'BASIC: (slack) variable is basic',
         <int>UPPER: 'UPPER: (slack) variable is at its upper bound',
@@ -436,9 +464,7 @@ def highs_wrapper(
         <int>SUPER: 'SUPER: Super-basic variable: non-basic and either free and nonzero or not at a bound. No SCIP equivalent',
     }
 
-    # Pull info out of out of highs
-    cdef HighsInfo info = highs.getHighsInfo()
-    return OptimizeResult({
+    return {
         # From HighsInfo
         'fun': info.objective_function_value,
         'simplex_nit': info.simplex_iteration_count,
@@ -476,7 +502,7 @@ def highs_wrapper(
             'status': modelstatus,
             'message': highs.highsModelStatusToString(<HighsModelStatus>modelstatus).decode(),
         },
-    })
+    }
 
 
 

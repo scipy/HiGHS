@@ -12,7 +12,7 @@ import numpy as np
 
 # Define some things for the module
 MODULE_NAME = 'pyHiGHS'
-VERSION = '0.0.17'
+VERSION = '0.0.21'
 
 # The current shortened git hash is written by make_release.sh
 with open('GITHASH', 'r') as f:
@@ -21,7 +21,7 @@ with open('GITHASH', 'r') as f:
 # Dependencies
 CYTHON_VERSION = '0.29.16'
 NUMPY_VERSION = '1.18.2'
-SCIPY_VERSION = '1.4.1'
+#SCIPY_VERSION = '1.4.1'
 
 class build_ext(_build_ext):
     '''Subclass build_ext to bootstrap numpy.'''
@@ -78,7 +78,7 @@ HIGHS_DIR = str(CYTHON_DIR.parent.resolve())
 # Here are the pound defines that HConfig.h would usually provide:
 TODAY_DATE = datetime.today().strftime('%Y-%m-%d')
 DEFINE_MACROS = [
-    ('OPENMP', None),
+    #('OPENMP', None),
     ('CMAKE_BUILD_TYPE', '"Release"'),
     ('HiGHSRELEASE', None),
     ('IPX_ON', None),
@@ -90,6 +90,7 @@ DEFINE_MACROS = [
     ('HIGHS_DIR', '"' + HIGHS_DIR + '"'),
 ]
 UNDEF_MACROS = [
+    'OPENMP', # disable OpenMP for scipy
     'EXT_PRESOLVE',
     'SCIP_DEV',
     'HiGHSDEV',
@@ -119,8 +120,8 @@ extensions = [
         language="c++",
         define_macros=DEFINE_MACROS,
         undef_macros=UNDEF_MACROS,
-        extra_compile_args=EXTRA_COMPILE_ARGS + ['-fopenmp'],
-        extra_link_args=['-fopenmp'],
+        extra_compile_args=EXTRA_COMPILE_ARGS# + ['-fopenmp'],
+        #extra_link_args=['-fopenmp'],
     ),
 ]
 
@@ -138,7 +139,7 @@ setup(
     long_description=open('PYREADME.rst', encoding='utf-8').read(),
     install_requires=[
         "numpy>=" + NUMPY_VERSION,
-        "scipy>=" + SCIPY_VERSION,
+        #"scipy>=" + SCIPY_VERSION,
         "Cython>=" + CYTHON_VERSION,
     ],
     cmdclass={'build_ext': build_ext},
