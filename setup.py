@@ -5,7 +5,7 @@ LOCALBUILD = False
 
 # Define some things for the module
 MODULE_NAME = 'pyHiGHS'
-VERSION = '0.0.24'
+VERSION = '0.0.25'
 
 # Dependencies
 CYTHON_VERSION = '0.29.16'
@@ -80,7 +80,7 @@ HIGHS_VERSION_PATCH = get_version('CMakeLists.txt', 'HIGHS_VERSION_PATCH')
 
 # Get path to shared libraries (for local build only)
 CYTHON_DIR = pathlib.Path(__file__).parent / MODULE_NAME
-HIGHS_DIR = str(CYTHON_DIR.parent.resolve())
+HIGHS_DIR = str(CYTHON_DIR.parent)
 LIBRARY_DIRS = [str(CYTHON_DIR.parent / get_distutils_lib_path() / MODULE_NAME)]
 
 # Read in current GITHASH
@@ -251,7 +251,7 @@ else:
                 str(pathlib.Path(MODULE_NAME + '/src/mpswriter.pyx'))
             ] + basiclu_sources + ipx_sources + sources,
             include_dirs=[
-                str(pathlib.Path(MODULE_NAME + '/src/').resolve()),
+                str(pathlib.Path(MODULE_NAME + '/src/')),
             ] + HIGHS_INCLUDE_DIRS,
             language="c++",
             define_macros=DEFINE_MACROS,
