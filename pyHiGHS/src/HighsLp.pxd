@@ -12,8 +12,18 @@ cdef extern from "HighsLp.h" nogil:
         int numCol_
         int numRow_
         int numInt_
-        vector[double] Avalue_
+        int nnz_
+
         string model_name_
+
+        vector[int] Astart_
+        vector[int] Aindex_
+        vector[double] Avalue_
+        vector[double] colCost_
+        vector[double] colLower_
+        vector[double] colUpper_
+        vector[double] rowLower_
+        vector[double] rowUpper_
 
     cdef enum HighsModelStatus:
         HighsModelStatusNOTSET "HighsModelStatus::NOTSET"

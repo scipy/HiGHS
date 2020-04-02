@@ -134,7 +134,7 @@ cdef HighsStatus callMipSolver(const HighsOptions& options, const HighsLp& lp, F
         return HighsStatusOK
     return HighsStatusError
 
-def linprog_mps(model_file, presolve=None, solver=None, bool run_quiet=True):
+def linprog_mps(model_file, presolve=None, solver=None, bool run_quiet=False):
     '''Solve linear program described in an MPS model file.
 
     Parameters
