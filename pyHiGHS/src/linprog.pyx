@@ -145,6 +145,12 @@ cdef int Highs_call(int numcol, int numrow, int numnz, double* colcost,
         # Let them know something was wrong with model
         modelstatus[0] = model_status
 
+        # Set all statuses to a custom unset value
+        for ii in range(numcol):
+            colbasisstatus[ii] = -1
+        for ii in range(numrow):
+            rowbasisstatus[ii] = -1
+
     return status
 
 cdef apply_options(dict options, Highs & highs):
@@ -504,6 +510,7 @@ def highs_wrapper(
 
     # Decode HighsBasisStatus:
     HighsBasisStatusToStr = {
+        -1 : 'UNSET', # custom
         <int>LOWER: 'LOWER: (slack) variable is at its lower bound [including fixed variables]',
         <int>BASIC: 'BASIC: (slack) variable is basic',
         <int>UPPER: 'UPPER: (slack) variable is at its upper bound',
