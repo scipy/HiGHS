@@ -43,7 +43,22 @@ from Highs cimport Highs
 from HighsLp cimport (
     HighsSolution,
     HighsBasis,
-    HighsModelStatus)
+
+    # Model Statuses
+    HighsModelStatus,
+    HighsModelStatusNOTSET as _HighsModelStatusNOTSET,
+    HighsModelStatusLOAD_ERROR as _HighsModelStatusLOAD_ERROR,
+    HighsModelStatusMODEL_ERROR as _HighsModelStatusMODEL_ERROR,
+    HighsModelStatusMODEL_EMPTY as _HighsModelStatusMODEL_EMPTY,
+    HighsModelStatusPRESOLVE_ERROR as _HighsModelStatusPRESOLVE_ERROR,
+    HighsModelStatusSOLVE_ERROR as _HighsModelStatusSOLVE_ERROR,
+    HighsModelStatusPOSTSOLVE_ERROR as _HighsModelStatusPOSTSOLVE_ERROR,
+    HighsModelStatusPRIMAL_INFEASIBLE as _HighsModelStatusPRIMAL_INFEASIBLE,
+    HighsModelStatusPRIMAL_UNBOUNDED as _HighsModelStatusPRIMAL_UNBOUNDED,
+    HighsModelStatusOPTIMAL as _HighsModelStatusOPTIMAL,
+    HighsModelStatusREACHED_DUAL_OBJECTIVE_VALUE_UPPER_BOUND as _HighsModelStatusREACHED_DUAL_OBJECTIVE_VALUE_UPPER_BOUND,
+    HighsModelStatusREACHED_TIME_LIMIT as _HighsModelStatusREACHED_TIME_LIMIT,
+    HighsModelStatusREACHED_ITERATION_LIMIT as _HighsModelStatusREACHED_ITERATION_LIMIT)
 from HighsInfo cimport HighsInfo
 from highs_c_api cimport Highs_passLp
 
@@ -60,6 +75,21 @@ ML_MINIMAL = _ML_MINIMAL
 SOLVER_OPTION_CHOOSE = _SOLVER_OPTION_CHOOSE
 SOLVER_OPTION_SIMPLEX = _SOLVER_OPTION_SIMPLEX
 SOLVER_OPTION_IPM = _SOLVER_OPTION_IPM
+
+HighsModelStatusNOTSET = <int>_HighsModelStatusNOTSET
+HighsModelStatusLOAD_ERROR = <int>_HighsModelStatusLOAD_ERROR
+HighsModelStatusMODEL_ERROR = <int>_HighsModelStatusMODEL_ERROR
+HighsModelStatusMODEL_EMPTY = <int>_HighsModelStatusMODEL_EMPTY
+HighsModelStatusPRESOLVE_ERROR = <int>_HighsModelStatusPRESOLVE_ERROR
+HighsModelStatusSOLVE_ERROR = <int>_HighsModelStatusSOLVE_ERROR
+HighsModelStatusPOSTSOLVE_ERROR = <int>_HighsModelStatusPOSTSOLVE_ERROR
+HighsModelStatusPRIMAL_INFEASIBLE = <int>_HighsModelStatusPRIMAL_INFEASIBLE
+HighsModelStatusPRIMAL_UNBOUNDED = <int>_HighsModelStatusPRIMAL_UNBOUNDED
+HighsModelStatusOPTIMAL = <int>_HighsModelStatusOPTIMAL
+HighsModelStatusREACHED_DUAL_OBJECTIVE_VALUE_UPPER_BOUND = <int>_HighsModelStatusREACHED_DUAL_OBJECTIVE_VALUE_UPPER_BOUND
+HighsModelStatusREACHED_TIME_LIMIT = <int>_HighsModelStatusREACHED_TIME_LIMIT
+HighsModelStatusREACHED_ITERATION_LIMIT = <int>_HighsModelStatusREACHED_ITERATION_LIMIT
+
 
 cdef int Highs_call(int numcol, int numrow, int numnz, double* colcost,
                     double* collower, double* colupper, double* rowlower,
@@ -79,11 +109,27 @@ cdef int Highs_call(int numcol, int numrow, int numnz, double* colcost,
         return status
     status = <int>highs.run()
 
+    # See how we did
+    cdef int model_status = <int>highs.getModelStatus()
+    cdef int scaled_model_status = <int>highs.getModelStatus(True);
+    if model_status != scaled_model_status:
+        if scaled_model_status == HighsModelStatusOPTIMAL:
+            # The scaled model has been solved to optimality, but not the
+            # unscaled model, flag this up, but report the scaled model
+            # status
+            model_status = scaled_model_status
+
     cdef unique_ptr[HighsSolution] solution
     cdef HighsBasis basis
-    if (status == 0):
+    if (status == 0 and model_status in [
+            HighsModelStatusOPTIMAL,
+            HighsModelStatusREACHED_DUAL_OBJECTIVE_VALUE_UPPER_BOUND,
+            HighsModelStatusREACHED_TIME_LIMIT,
+            HighsModelStatusREACHED_ITERATION_LIMIT]):
         solution = make_unique[HighsSolution](highs.getSolution())
         basis = highs.getBasis()
+
+        # Set the modelstatus for return
         modelstatus[0] = <int>highs.getModelStatus()
 
         for ii in range(numcol):
@@ -95,6 +141,9 @@ cdef int Highs_call(int numcol, int numrow, int numnz, double* colcost,
             rowvalue[ii] = solution.get().row_value[ii]
             rowdual[ii] = solution.get().row_dual[ii]
             rowbasisstatus[ii] = <int>basis.row_status[ii]
+    else:
+        # Let them know something was wrong with model
+        modelstatus[0] = model_status
 
     return status
 
@@ -455,7 +504,6 @@ def highs_wrapper(
 
     # Decode HighsBasisStatus:
     HighsBasisStatusToStr = {
-        -1 : 'unset',
         <int>LOWER: 'LOWER: (slack) variable is at its lower bound [including fixed variables]',
         <int>BASIC: 'BASIC: (slack) variable is basic',
         <int>UPPER: 'UPPER: (slack) variable is at its upper bound',
@@ -520,8 +568,7 @@ from HighsRuntimeOptions cimport loadOptions
 from HighsIO cimport HighsPrintMessage
 from HighsLp cimport (
     HighsLp,
-    HighsModelStatus,
-    HighsModelStatusOPTIMAL)
+    HighsModelStatus)
 from HighsStatus cimport (
     HighsStatus,
     HighsStatusToString,
@@ -564,7 +611,7 @@ cdef void reportSolvedLpStats(FILE* output, int message_level, const HighsStatus
         scaled_model_status = highs.getModelStatus(True)
         highs_info = highs.getHighsInfo()
         if model_status != scaled_model_status:
-            if scaled_model_status == HighsModelStatusOPTIMAL:
+            if scaled_model_status == _HighsModelStatusOPTIMAL:
                 HighsPrintMessage(output, message_level, ML_ALWAYS,
                                   "Primal infeasibility: %10.3e (%d)\n",
                                   highs_info.max_primal_infeasibility,
@@ -585,7 +632,7 @@ cdef void reportSolvedLpStats(FILE* output, int message_level, const HighsStatus
             HighsPrintMessage(output, message_level, ML_ALWAYS,
                               "Crossover iterations: %d\n",
                               highs_info.crossover_iteration_count)
-        if model_status == HighsModelStatusOPTIMAL:
+        if model_status == _HighsModelStatusOPTIMAL:
             highs.getHighsInfoValue("objective_function_value".encode(), objective_function_value)
             HighsPrintMessage(output, message_level, ML_ALWAYS,
                               "Objective value     : %13.6e\n",
