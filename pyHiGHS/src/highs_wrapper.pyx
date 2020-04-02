@@ -99,6 +99,191 @@ def highs_wrapper(
         double[::1] lb,
         double[::1] ub,
         dict options):
+    '''Solve linear programs using HiGHS [1]_.
+
+    Assume problems of the form:
+
+        MIN/MAX c.T @ x
+        s.t. lhs <= A @ x <= rhs
+             lb <= x <= ub
+
+    Default is MIN (for MAX set `sense=-1`).
+
+    Parameters
+    ----------
+    c : 1-D array, (n,)
+        Array of objective value coefficients.
+    astart : 1-D array
+    aindex : 1-D array
+    avalue : 1-D array
+    lhs : 1-D array (or None), (m,)
+        Array of left hand side values of the inequality constraints.
+        If `lhs=None`, then an array of `-inf` is assumed.
+    rhs : 1-D array, (m,)
+        Array of right hand side values of the inequality constraints.
+    lb : 1-D array (or None), (n,)
+        Lower bounds on solution variables x.  If `lb=None`, then an
+        array of all `0` is assumed.
+    ub : 1-D array (or None), (n,)
+        Upper bounds on solution variables x.  If `ub=None`, then an
+        array of `inf` is assumed.
+    options : dict
+        A dictionary of solver options with the following fields:
+
+            - dual_feasibility_tolerance : double
+                Dual feasibility tolerance
+            - dual_objective_value_upper_bound : double
+                Upper bound on objective value for dual simplex:
+                algorithm terminates if reached
+            - infinite_bound : double
+                Limit on abs(constraint bound): values larger than
+                this will be treated as infinite
+            - infinite_cost : double
+                Limit on cost coefficient: values larger than this
+                will be treated as infinite.
+            - large_matrix_value : double
+                Upper limit on abs(matrix entries): values larger than
+                this will be treated as infinite
+            - max_threads : int
+                Maximum number of threads in parallel execution.
+            - message_level : int {0, 1, 2, 4}
+                Verbosity level, corresponds to:
+
+                    - `0`: ML_NONE
+                    - `1`: ML_VERBOSE
+                    - `2`: ML_DETAILED
+                    - `4`: ML_MINIMAL
+
+            - min_threads : int
+                Minimum number of threads in parallel execution.
+            - parallel : bool
+                Run the solver in serial (False) or parallel (True).
+            - presolve : bool
+                Run the presolve or not (or if `None`, then choose).
+            - primal_feasibility_tolerance : double
+                Primal feasibility tolerance.
+            - sense : int {1, -1}
+                `sense=1` corresponds to the MIN problem, `sense=-1`
+                corresponds to the MAX problem. TODO: NOT IMPLEMENTED
+            - simplex_crash_strategy : int {0, 1, 2, 3, 4, 5, 6, 7, 8, 9}
+                Strategy for simplex crash: off / LTSSF / Bixby (0/1/2).
+                Default is `0`.  Corresponds to the following:
+
+                    - `0`: `SIMPLEX_CRASH_STRATEGY_OFF`
+                    - `1`: `SIMPLEX_CRASH_STRATEGY_LTSSF_K`
+                    - `2`: `SIMPLEX_CRASH_STRATEGY_BIXBY`
+                    - `3`: `SIMPLEX_CRASH_STRATEGY_LTSSF_PRI`
+                    - `4`: `SIMPLEX_CRASH_STRATEGY_LTSF_K`
+                    - `5`: `SIMPLEX_CRASH_STRATEGY_LTSF_PRI`
+                    - `6`: `SIMPLEX_CRASH_STRATEGY_LTSF`
+                    - `7`: `SIMPLEX_CRASH_STRATEGY_BIXBY_NO_NONZERO_COL_COSTS`
+                    - `8`: `SIMPLEX_CRASH_STRATEGY_BASIC`
+                    - `9`: `SIMPLE_CRASH_STRATEGY_TEST_SING`
+
+            - simplex_dual_edge_weight_strategy : int {0, 1, 2, 3, 4}
+                Strategy for simplex dual edge weights:
+                Dantzig / Devex / Steepest Edge. Corresponds
+                to the following:
+
+                    - `0`: `SIMPLEX_DUAL_EDGE_WEIGHT_STRATEGY_DANTZIG`
+                    - `1`: `SIMPLEX_DUAL_EDGE_WEIGHT_STRATEGY_DEVEX`
+                    - `2`: `SIMPLEX_DUAL_EDGE_WEIGHT_STRATEGY_STEEPEST_EDGE_TO_DEVEX_SWITCH`
+                    - `3`: `SIMPLEX_DUAL_EDGE_WEIGHT_STRATEGY_STEEPEST_EDGE`
+                    - `4`: `SIMPLEX_DUAL_EDGE_WEIGHT_STRATEGY_STEEPEST_EDGE_UNIT_INITIAL`
+
+            - simplex_iteration_limit : int
+                Iteration limit for simplex solver.
+
+            - simplex_primal_edge_weight_strategy : int {0, 1}
+                Strategy for simplex primal edge weights:
+                Dantzig / Devex.  Corresponds to the following:
+
+                    - `0`: `SIMPLEX_PRIMAL_EDGE_WEIGHT_STRATEGY_DANTZIG`
+                    - `1`: `SIMPLEX_PRIMAL_EDGE_WEIGHT_STRATEGY_DEVEX`
+
+            - simplex_scale_strategy : int {0, 1, 2, 3, 4, 5}
+                Strategy for scaling before simplex solver:
+                off / on (0/1)
+
+                    - `0`:  `SIMPLEX_SCALE_STRATEGY_OFF`
+                    - `1`: `SIMPLEX_SCALE_STRATEGY_HIGHS`
+                    - `2`: `SIMPLEX_SCALE_STRATEGY_HIGHS_FORCED`
+                    - `3`: `SIMPLEX_SCALE_STRATEGY_HIGHS_015`
+                    - `4`: `SIMPLEX_SCALE_STRATEGY_HIGHS_0157`
+                    - `5`: `SIMPLEX_SCALE_STRATEGY_HSOL`
+
+            - simplex_strategy : int {0, 1, 2, 3, 4}
+                Strategy for simplex solver. Default: 1. Corresponds
+                to the following:
+
+                    - `0`: `SIMPLEX_STRATEGY_MIN`
+                    - `1`: `SIMPLEX_STRATEGY_DUAL`
+                    - `2`: `SIMPLEX_STRATEGY_DUAL_TASKS`
+                    - `3`: `SIMPLEX_STRATEGY_DUAL_MULTI`
+                    - `4`: `SIMPLEX_STRATEGY_PRIMAL`
+
+            - simplex_update_limit : int
+                Limit on the number of simplex UPDATE operations.
+            - small_matrix_value : double
+                Lower limit on abs(matrix entries): values smaller
+                than this will be treated as zero.
+            - solver : str {'simplex', 'ipm'}
+                Choose which solver to use.  If `solver='simplex'`
+                and `parallel=True` then PAMI will be used.
+            - time_limit : double
+                Max number of seconds to run the solver for.
+            - solution_file : str
+                Solution file
+            - write_solution_to_file : bool
+                Write the primal and dual solution to a file
+            - write_solution_pretty : bool
+                Write the primal and dual solution in a pretty
+                (human-readable) format
+
+        See [2]_ for a list of all options.
+
+    Returns
+    -------
+    res : dict
+
+        If model_status is one of OPTIMAL,
+        REACHED_DUAL_OBJECTIVE_VALUE_UPPER_BOUND, REACHED_TIME_LIMIT,
+        REACHED_ITERATION_LIMIT:
+
+            - `status` : int
+                Model status code.
+            - `message` : str
+                Message corresponding to model status code.
+            - `x` : list
+                Solution variables.
+            - `fun`
+                Final objective value.
+            - `simplex_nit` : int
+                Number of iterations accomplished by the simplex
+                solver.
+            - `ipm_nit` : int
+                Number of iterations accomplished by the interior-
+                point solver.
+
+        If model_status is not one of the above:
+
+            - `status` : int
+                Model status code.
+            - `message` : str
+                Message corresponding to model status code.
+
+    Notes
+    -----
+    If `options['write_solution_to_file']` is `True` but
+    `options['solution_file']` is unset or `''`, then the solution
+    will be printed to `stdout`.
+
+    References
+    ----------
+    .. [1] https://www.maths.ed.ac.uk/hall/HiGHS
+    .. [2] https://www.maths.ed.ac.uk/hall/HiGHS/HighsOptions.html
+    '''
+
 
     cdef int numcol = c.size
     cdef int numrow = rhs.size

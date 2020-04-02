@@ -1,11 +1,11 @@
 '''Create shared libraries for use within scipy.'''
 
 # Is this a local build or from pypi?
-LOCALBUILD = False
+LOCALBUILD = True
 
 # Define some things for the module
 MODULE_NAME = 'pyHiGHS'
-VERSION = '0.0.25'
+VERSION = '0.0.26'
 
 # Dependencies
 CYTHON_VERSION = '0.29.16'
@@ -277,7 +277,7 @@ setup(
     cmdclass={'build_ext': build_ext},
     setup_requires=['numpy', 'Cython'],
     python_requires='>=3',
-    include_package_data=True, # include example .mps file
+    #include_package_data=True, # include example .mps file
 
     ext_modules=cythonize(extensions),
 )
