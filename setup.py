@@ -12,7 +12,7 @@ import numpy as np
 
 # Define some things for the module
 MODULE_NAME = 'pyHiGHS'
-VERSION = '0.0.22'
+VERSION = '0.0.23'
 
 # The current shortened git hash is written by make_release.sh
 with open('GITHASH', 'r') as f:
