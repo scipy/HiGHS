@@ -12,7 +12,7 @@ import numpy as np
 
 # Define some things for the module
 MODULE_NAME = 'pyHiGHS'
-VERSION = '0.0.21'
+VERSION = '0.0.22'
 
 # The current shortened git hash is written by make_release.sh
 with open('GITHASH', 'r') as f:
@@ -107,7 +107,7 @@ extensions = [
             str(pathlib.Path(MODULE_NAME + '/src/linprog.pyx'))
         ] + basiclu_sources + ipx_sources + sources,
         include_dirs=[
-            str(pathlib.Path(MODULE_NAME+ '/src/')),
+            str(pathlib.Path(MODULE_NAME + '/src/')),
             str(pathlib.Path('src/ipm/basiclu/include/')),
             str(pathlib.Path('external/')),
             str(pathlib.Path('src/')),
