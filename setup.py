@@ -1,11 +1,11 @@
 '''Create shared libraries for use within scipy.'''
 
 # Is this a local build or from pypi?
-LOCALBUILD = True
+LOCALBUILD = False
 
 # Define some things for the module
 MODULE_NAME = 'pyHiGHS'
-VERSION = '0.0.27'
+VERSION = '0.0.28'
 
 # Dependencies
 CYTHON_VERSION = '0.29.16'
@@ -209,6 +209,7 @@ if LOCALBUILD:
             libraries=['highs' + SO_SUFFIX],
             library_dirs=LIBRARY_DIRS,
             runtime_library_dirs=LIBRARY_DIRS,
+            extra_compile_args=EXTRA_COMPILE_ARGS,
         ),
     ]
 else:
@@ -246,18 +247,19 @@ else:
         # TODO
 
         # MPS writer
-        Extension(
-            MODULE_NAME + '.mpswriter',
-            [
-                str(pathlib.Path(MODULE_NAME + '/src/mpswriter.pyx'))
-            ] + basiclu_sources + ipx_sources + sources,
-            include_dirs=[
-                str(pathlib.Path(MODULE_NAME + '/src/')),
-            ] + HIGHS_INCLUDE_DIRS,
-            language="c++",
-            define_macros=DEFINE_MACROS,
-            undef_macros=UNDEF_MACROS,
-        ),
+        #Extension(
+        #    MODULE_NAME + '.mpswriter',
+        #    [
+        #        str(pathlib.Path(MODULE_NAME + '/src/mpswriter.pyx'))
+        #    ] + basiclu_sources + ipx_sources + sources,
+        #    include_dirs=[
+        #        str(pathlib.Path(MODULE_NAME + '/src/')),
+        #    ] + HIGHS_INCLUDE_DIRS,
+        #    language="c++",
+        #    define_macros=DEFINE_MACROS,
+        #    undef_macros=UNDEF_MACROS,
+        #    extra_compile_args=EXTRA_COMPILE_ARGS
+        #),
     ]
 
 setup(
