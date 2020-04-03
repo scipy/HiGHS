@@ -5,7 +5,7 @@ LOCALBUILD = True
 
 # Define some things for the module
 MODULE_NAME = 'pyHiGHS'
-VERSION = '0.0.26'
+VERSION = '0.0.27'
 
 # Dependencies
 CYTHON_VERSION = '0.29.16'
@@ -84,8 +84,9 @@ HIGHS_DIR = str(CYTHON_DIR.parent)
 LIBRARY_DIRS = [str(CYTHON_DIR.parent / get_distutils_lib_path() / MODULE_NAME)]
 
 # Read in current GITHASH
-with open('GITHASH', 'r') as f:
-    GITHASH = f.read().strip()
+#with open('GITHASH', 'r') as f:
+#    GITHASH = f.read().strip()
+GITHASH = "holder"
 
 # Here are the pound defines that HConfig.h would usually provide:
 TODAY_DATE = datetime.today().strftime('%Y-%m-%d')
