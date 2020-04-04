@@ -1,11 +1,8 @@
 '''Create shared libraries for use within scipy.'''
 
-# Is this a local build or from pypi?
-LOCALBUILD = False
-
 # Define some things for the module
 MODULE_NAME = 'pyHiGHS'
-VERSION = '0.0.28'
+VERSION = '0.1.6'
 
 # Dependencies
 CYTHON_VERSION = '0.29.16'
@@ -32,8 +29,19 @@ def get_distutils_lib_path():
 
 class build_ext(_build_ext):
     '''Subclass build_ext to bootstrap numpy.'''
+
     def finalize_options(self):
+
+        # Make sure directory of shared libraries is in rpath
+        # for inplace builds
+        self.user = True
+
         _build_ext.finalize_options(self)
+
+        # Modify the rpath to insert the directory where the SOs are installed;
+        # it will be a relative path, so module have it as it's working
+        # directory
+        self.rpath.append('./')
 
         # Prevent numpy from thinking it's still in its setup process
         import numpy as np
@@ -81,7 +89,9 @@ HIGHS_VERSION_PATCH = get_version('CMakeLists.txt', 'HIGHS_VERSION_PATCH')
 # Get path to shared libraries (for local build only)
 CYTHON_DIR = pathlib.Path(__file__).parent / MODULE_NAME
 HIGHS_DIR = str(CYTHON_DIR.parent)
-LIBRARY_DIRS = [str(CYTHON_DIR.parent / get_distutils_lib_path() / MODULE_NAME)]
+
+LIBRARY_DIRS = []
+LIBRARY_DIRS.append(str(CYTHON_DIR.parent / get_distutils_lib_path() / MODULE_NAME))
 
 # Read in current GITHASH
 #with open('GITHASH', 'r') as f:
@@ -119,148 +129,183 @@ if SO_SUFFIX is None:
 
 # We use some modern C++, as you should. HiGHS uses C++11, no penalty for going to C++14
 EXTRA_COMPILE_ARGS = ['-std=c++14']
+#
+#if LOCALBUILD:
+#    extensions = [
+#        # BASICLU
+#        Extension(
+#            MODULE_NAME + '.' + SO_PREFIX + 'basiclu',
+#            basiclu_sources,
+#            include_dirs=[
+#                str(pathlib.Path('src/').resolve()),
+#                str(pathlib.Path('src/ipm/basiclu/include/').resolve()),
+#            ],
+#            language="c",
+#            define_macros=DEFINE_MACROS,
+#            undef_macros=UNDEF_MACROS,
+#        ),
+#
+#        # IPX
+#        Extension(
+#            MODULE_NAME + '.' + SO_PREFIX + 'ipx',
+#            ipx_sources,
+#            include_dirs=[
+#                str(pathlib.Path('src/').resolve()),
+#                str(pathlib.Path('src/ipm/ipx/include/').resolve()),
+#                str(pathlib.Path('src/ipm/basiclu/include/').resolve()),
+#            ],
+#            language="c++",
+#            library_dirs=LIBRARY_DIRS,
+#            libraries=['basiclu' + SO_SUFFIX],
+#            runtime_library_dirs=LIBRARY_DIRS,
+#            define_macros=DEFINE_MACROS,
+#            undef_macros=UNDEF_MACROS,
+#            extra_compile_args=EXTRA_COMPILE_ARGS,
+#        ),
+#
+#        # HiGHS
+#        Extension(
+#            MODULE_NAME + '.libhighs',
+#            sources,
+#            include_dirs=[
+#                str(pathlib.Path(MODULE_NAME + '/src/').resolve()),
+#                str(pathlib.Path('src/').resolve()),
+#                str(pathlib.Path('src/ipm/ipx/include/').resolve()),
+#                str(pathlib.Path('src/lp_data/').resolve()),
+#            ],
+#            language="c++",
+#            library_dirs=LIBRARY_DIRS,
+#            libraries=['ipx' + SO_SUFFIX],
+#            runtime_library_dirs=LIBRARY_DIRS,
+#            define_macros=DEFINE_MACROS,
+#            undef_macros=UNDEF_MACROS,
+#            extra_compile_args=EXTRA_COMPILE_ARGS
+#        ),
+#
+#        # Cython wrapper using C++ API
+#        Extension(
+#            MODULE_NAME + '.highs_wrapper',
+#            [str(pathlib.Path(MODULE_NAME + '/src/highs_wrapper.pyx').resolve())],
+#            include_dirs=[
+#                str(pathlib.Path(MODULE_NAME + '/src/').resolve()),
+#                str(pathlib.Path('src/').resolve()),
+#                str(pathlib.Path('src/interfaces/').resolve()),
+#                str(pathlib.Path('src/lp_data/').resolve()),
+#                str(pathlib.Path('src/io/').resolve()),
+#            ],
+#            language='c++',
+#            library_dirs=LIBRARY_DIRS,
+#            libraries=['highs' + SO_SUFFIX],
+#            runtime_library_dirs=LIBRARY_DIRS,
+#            define_macros=DEFINE_MACROS,
+#            undef_macros=UNDEF_MACROS,
+#            extra_compile_args=EXTRA_COMPILE_ARGS,
+#        ),
+#
+#        ## MPS writer
+#        #Extension(
+#        #    MODULE_NAME + '.mpswriter',
+#        #    [str(pathlib.Path(MODULE_NAME + '/src/mpswriter.pyx'))],
+#        #    include_dirs=[
+#        #        str(pathlib.Path(MODULE_NAME + '/src/').resolve()),
+#        #        str(pathlib.Path('src/').resolve()),
+#        #        str(pathlib.Path('src/lp_data/').resolve()),
+#        #        str(pathlib.Path('src/io/').resolve()),
+#        #        str(pathlib.Path('src/util/').resolve()),
+#        #    ],
+#        #    language="c++",
+#        #    define_macros=DEFINE_MACROS,
+#        #    undef_macros=UNDEF_MACROS,
+#        #    libraries=['highs' + SO_SUFFIX],
+#        #    library_dirs=LIBRARY_DIRS,
+#        #    runtime_library_dirs=LIBRARY_DIRS,
+#        #    extra_compile_args=EXTRA_COMPILE_ARGS,
+#        #),
+#    ]
+#else:
+# These are the extensions for PyPi; note that sources are compiled
+# for each extensions because I don't know how to link libraries
+# that generated over the course of building
+HIGHS_INCLUDE_DIRS = [
+    str(pathlib.Path('src/ipm/basiclu/include/')),
+    str(pathlib.Path('external/')),
+    str(pathlib.Path('src/')),
+    str(pathlib.Path('src/ipm/ipx/include/')),
+    str(pathlib.Path('src/lp_data/')),
+    str(pathlib.Path('src/io/')),
+    str(pathlib.Path('src/mip/')),
+    str(pathlib.Path('src/interfaces/')),
+]
+extensions = [
 
-if LOCALBUILD:
-    extensions = [
-        # BASICLU
-        Extension(
-            MODULE_NAME + '.' + SO_PREFIX + 'basiclu',
-            basiclu_sources,
-            include_dirs=[
-                str(pathlib.Path('src/').resolve()),
-                str(pathlib.Path('src/ipm/basiclu/include/').resolve()),
-            ],
-            language="c",
-            define_macros=DEFINE_MACROS,
-            undef_macros=UNDEF_MACROS,
-        ),
+    # BASICLU
+    Extension(
+        MODULE_NAME + '.' + SO_PREFIX + 'basiclu',
+        basiclu_sources,
+        include_dirs=[
+            str(pathlib.Path('src/')),
+            str(pathlib.Path('src/ipm/basiclu/include/')),
+    ],
+        language="c",
+        define_macros=DEFINE_MACROS,
+        undef_macros=UNDEF_MACROS,
+    ),
 
-        # IPX
-        Extension(
-            MODULE_NAME + '.' + SO_PREFIX + 'ipx',
-            ipx_sources,
-            include_dirs=[
-                str(pathlib.Path('src/').resolve()),
-                str(pathlib.Path('src/ipm/ipx/include/').resolve()),
-                str(pathlib.Path('src/ipm/basiclu/include/').resolve()),
-            ],
-            language="c++",
-            library_dirs=LIBRARY_DIRS,
-            libraries=['basiclu' + SO_SUFFIX],
-            runtime_library_dirs=LIBRARY_DIRS,
-            define_macros=DEFINE_MACROS,
-            undef_macros=UNDEF_MACROS,
-            extra_compile_args=EXTRA_COMPILE_ARGS,
-        ),
+    # IPX
+    Extension(
+        MODULE_NAME + '.' + SO_PREFIX + 'ipx',
+        ipx_sources,
+        include_dirs=[
+            str(pathlib.Path('src/')),
+            str(pathlib.Path('src/ipm/ipx/include/')),
+            str(pathlib.Path('src/ipm/basiclu/include/')),
+        ],
+        language="c++",
+        libraries=['basiclu' + SO_SUFFIX],
+        library_dirs=LIBRARY_DIRS,
+        runtime_library_dirs=LIBRARY_DIRS, # for inplace
+        define_macros=DEFINE_MACROS,
+        undef_macros=UNDEF_MACROS,
+        extra_compile_args=EXTRA_COMPILE_ARGS,
+    ),
 
-        # HiGHS
-        Extension(
-            MODULE_NAME + '.libhighs',
-            sources,
-            include_dirs=[
-                str(pathlib.Path(MODULE_NAME + '/src/').resolve()),
-                str(pathlib.Path('src/').resolve()),
-                str(pathlib.Path('src/ipm/ipx/include/').resolve()),
-                str(pathlib.Path('src/lp_data/').resolve()),
-            ],
-            language="c++",
-            library_dirs=LIBRARY_DIRS,
-            libraries=['ipx' + SO_SUFFIX],
-            runtime_library_dirs=LIBRARY_DIRS,
-            define_macros=DEFINE_MACROS,
-            undef_macros=UNDEF_MACROS,
-            extra_compile_args=EXTRA_COMPILE_ARGS
-        ),
+    # HiGHS
+    Extension(
+        MODULE_NAME + '.libhighs',
+        sources,
+        include_dirs=[
+            str(pathlib.Path(MODULE_NAME + '/src/')),
+            str(pathlib.Path('src/')),
+            str(pathlib.Path('src/ipm/ipx/include/')),
+            str(pathlib.Path('src/lp_data/')),
+        ],
+        language="c++",
+        library_dirs=LIBRARY_DIRS,
+        runtime_library_dirs=LIBRARY_DIRS, # for inplace
+        libraries=['ipx' + SO_SUFFIX],
+        define_macros=DEFINE_MACROS,
+        undef_macros=UNDEF_MACROS,
+        extra_compile_args=EXTRA_COMPILE_ARGS
+    ),
 
-        # Cython wrapper using C++ API
-        Extension(
-            MODULE_NAME + '.highs_wrapper',
-            [str(pathlib.Path(MODULE_NAME + '/src/highs_wrapper.pyx').resolve())],
-            include_dirs=[
-                str(pathlib.Path(MODULE_NAME + '/src/').resolve()),
-                str(pathlib.Path('src/').resolve()),
-                str(pathlib.Path('src/interfaces/').resolve()),
-                str(pathlib.Path('src/lp_data/').resolve()),
-                str(pathlib.Path('src/io/').resolve()),
-            ],
-            language='c++',
-            library_dirs=LIBRARY_DIRS,
-            libraries=['highs' + SO_SUFFIX],
-            runtime_library_dirs=LIBRARY_DIRS,
-            define_macros=DEFINE_MACROS,
-            undef_macros=UNDEF_MACROS,
-            extra_compile_args=EXTRA_COMPILE_ARGS,
-        ),
-
-        # MPS writer
-        Extension(
-            MODULE_NAME + '.mpswriter',
-            [str(pathlib.Path(MODULE_NAME + '/src/mpswriter.pyx'))],
-            include_dirs=[
-                str(pathlib.Path(MODULE_NAME + '/src/').resolve()),
-                str(pathlib.Path('src/').resolve()),
-                str(pathlib.Path('src/lp_data/').resolve()),
-                str(pathlib.Path('src/io/').resolve()),
-                str(pathlib.Path('src/util/').resolve()),
-            ],
-            language="c++",
-            define_macros=DEFINE_MACROS,
-            undef_macros=UNDEF_MACROS,
-            libraries=['highs' + SO_SUFFIX],
-            library_dirs=LIBRARY_DIRS,
-            runtime_library_dirs=LIBRARY_DIRS,
-            extra_compile_args=EXTRA_COMPILE_ARGS,
-        ),
-    ]
-else:
-    # These are the extensions for PyPi; note that sources are compiled
-    # for each extensions because I don't know how to link libraries
-    # that generated over the course of building
-    HIGHS_INCLUDE_DIRS = [
-        str(pathlib.Path('src/ipm/basiclu/include/')),
-        str(pathlib.Path('external/')),
-        str(pathlib.Path('src/')),
-        str(pathlib.Path('src/ipm/ipx/include/')),
-        str(pathlib.Path('src/lp_data/')),
-        str(pathlib.Path('src/io/')),
-        str(pathlib.Path('src/mip/')),
-        str(pathlib.Path('src/interfaces/')),
-    ]
-    extensions = [
-
-        # Wrapper over HiGHS C++ API
-        Extension(
-            MODULE_NAME + '.highs_wrapper',
-            [
-                str(pathlib.Path(MODULE_NAME + '/src/highs_wrapper.pyx'))
-            ] + basiclu_sources + ipx_sources + sources,
-            include_dirs=[
-                str(pathlib.Path(MODULE_NAME+ '/src/')),
-            ] + HIGHS_INCLUDE_DIRS,
-            language="c++",
-            define_macros=DEFINE_MACROS,
-            undef_macros=UNDEF_MACROS,
-            extra_compile_args=EXTRA_COMPILE_ARGS
-        ),
-
-        # MPS solver
-        # TODO
-
-        # MPS writer
-        #Extension(
-        #    MODULE_NAME + '.mpswriter',
-        #    [
-        #        str(pathlib.Path(MODULE_NAME + '/src/mpswriter.pyx'))
-        #    ] + basiclu_sources + ipx_sources + sources,
-        #    include_dirs=[
-        #        str(pathlib.Path(MODULE_NAME + '/src/')),
-        #    ] + HIGHS_INCLUDE_DIRS,
-        #    language="c++",
-        #    define_macros=DEFINE_MACROS,
-        #    undef_macros=UNDEF_MACROS,
-        #    extra_compile_args=EXTRA_COMPILE_ARGS
-        #),
-    ]
+    # Wrapper over HiGHS C++ API
+    Extension(
+        MODULE_NAME + '.highs_wrapper',
+        [
+            str(pathlib.Path(MODULE_NAME + '/src/highs_wrapper.pyx'))
+        ], #+ basiclu_sources + ipx_sources + sources,
+        include_dirs=[
+            str(pathlib.Path(MODULE_NAME+ '/src/')),
+        ] + HIGHS_INCLUDE_DIRS,
+        language="c++",
+        define_macros=DEFINE_MACROS,
+        undef_macros=UNDEF_MACROS,
+        extra_compile_args=EXTRA_COMPILE_ARGS,
+        libraries=['highs' + SO_SUFFIX],
+        library_dirs=LIBRARY_DIRS,
+        runtime_library_dirs=LIBRARY_DIRS, # for inplace
+    ),
+]
 
 setup(
     name='scikit-highs',
@@ -277,7 +322,9 @@ setup(
         "numpy>=" + NUMPY_VERSION,
         "Cython>=" + CYTHON_VERSION,
     ],
-    cmdclass={'build_ext': build_ext},
+    cmdclass={
+        'build_ext': build_ext,
+    },
     setup_requires=['numpy', 'Cython'],
     python_requires='>=3',
     #include_package_data=True, # include example .mps file
