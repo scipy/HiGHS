@@ -129,103 +129,8 @@ if SO_SUFFIX is None:
 
 # We use some modern C++, as you should. HiGHS uses C++11, no penalty for going to C++14
 EXTRA_COMPILE_ARGS = ['-std=c++14']
-#
-#if LOCALBUILD:
-#    extensions = [
-#        # BASICLU
-#        Extension(
-#            MODULE_NAME + '.' + SO_PREFIX + 'basiclu',
-#            basiclu_sources,
-#            include_dirs=[
-#                str(pathlib.Path('src/').resolve()),
-#                str(pathlib.Path('src/ipm/basiclu/include/').resolve()),
-#            ],
-#            language="c",
-#            define_macros=DEFINE_MACROS,
-#            undef_macros=UNDEF_MACROS,
-#        ),
-#
-#        # IPX
-#        Extension(
-#            MODULE_NAME + '.' + SO_PREFIX + 'ipx',
-#            ipx_sources,
-#            include_dirs=[
-#                str(pathlib.Path('src/').resolve()),
-#                str(pathlib.Path('src/ipm/ipx/include/').resolve()),
-#                str(pathlib.Path('src/ipm/basiclu/include/').resolve()),
-#            ],
-#            language="c++",
-#            library_dirs=LIBRARY_DIRS,
-#            libraries=['basiclu' + SO_SUFFIX],
-#            runtime_library_dirs=LIBRARY_DIRS,
-#            define_macros=DEFINE_MACROS,
-#            undef_macros=UNDEF_MACROS,
-#            extra_compile_args=EXTRA_COMPILE_ARGS,
-#        ),
-#
-#        # HiGHS
-#        Extension(
-#            MODULE_NAME + '.libhighs',
-#            sources,
-#            include_dirs=[
-#                str(pathlib.Path(MODULE_NAME + '/src/').resolve()),
-#                str(pathlib.Path('src/').resolve()),
-#                str(pathlib.Path('src/ipm/ipx/include/').resolve()),
-#                str(pathlib.Path('src/lp_data/').resolve()),
-#            ],
-#            language="c++",
-#            library_dirs=LIBRARY_DIRS,
-#            libraries=['ipx' + SO_SUFFIX],
-#            runtime_library_dirs=LIBRARY_DIRS,
-#            define_macros=DEFINE_MACROS,
-#            undef_macros=UNDEF_MACROS,
-#            extra_compile_args=EXTRA_COMPILE_ARGS
-#        ),
-#
-#        # Cython wrapper using C++ API
-#        Extension(
-#            MODULE_NAME + '.highs_wrapper',
-#            [str(pathlib.Path(MODULE_NAME + '/src/highs_wrapper.pyx').resolve())],
-#            include_dirs=[
-#                str(pathlib.Path(MODULE_NAME + '/src/').resolve()),
-#                str(pathlib.Path('src/').resolve()),
-#                str(pathlib.Path('src/interfaces/').resolve()),
-#                str(pathlib.Path('src/lp_data/').resolve()),
-#                str(pathlib.Path('src/io/').resolve()),
-#            ],
-#            language='c++',
-#            library_dirs=LIBRARY_DIRS,
-#            libraries=['highs' + SO_SUFFIX],
-#            runtime_library_dirs=LIBRARY_DIRS,
-#            define_macros=DEFINE_MACROS,
-#            undef_macros=UNDEF_MACROS,
-#            extra_compile_args=EXTRA_COMPILE_ARGS,
-#        ),
-#
-#        ## MPS writer
-#        #Extension(
-#        #    MODULE_NAME + '.mpswriter',
-#        #    [str(pathlib.Path(MODULE_NAME + '/src/mpswriter.pyx'))],
-#        #    include_dirs=[
-#        #        str(pathlib.Path(MODULE_NAME + '/src/').resolve()),
-#        #        str(pathlib.Path('src/').resolve()),
-#        #        str(pathlib.Path('src/lp_data/').resolve()),
-#        #        str(pathlib.Path('src/io/').resolve()),
-#        #        str(pathlib.Path('src/util/').resolve()),
-#        #    ],
-#        #    language="c++",
-#        #    define_macros=DEFINE_MACROS,
-#        #    undef_macros=UNDEF_MACROS,
-#        #    libraries=['highs' + SO_SUFFIX],
-#        #    library_dirs=LIBRARY_DIRS,
-#        #    runtime_library_dirs=LIBRARY_DIRS,
-#        #    extra_compile_args=EXTRA_COMPILE_ARGS,
-#        #),
-#    ]
-#else:
-# These are the extensions for PyPi; note that sources are compiled
-# for each extensions because I don't know how to link libraries
-# that generated over the course of building
+
+# Shared include dirs
 HIGHS_INCLUDE_DIRS = [
     str(pathlib.Path('src/ipm/basiclu/include/')),
     str(pathlib.Path('external/')),
@@ -236,6 +141,8 @@ HIGHS_INCLUDE_DIRS = [
     str(pathlib.Path('src/mip/')),
     str(pathlib.Path('src/interfaces/')),
 ]
+
+# Create shared library for each component
 extensions = [
 
     # BASICLU
