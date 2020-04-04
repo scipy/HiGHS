@@ -2,7 +2,7 @@
 
 # Define some things for the module
 MODULE_NAME = 'pyHiGHS'
-VERSION = '0.1.6'
+VERSION = '0.2.2'
 
 # Dependencies
 CYTHON_VERSION = '0.29.16'
@@ -92,7 +92,7 @@ HIGHS_VERSION_PATCH = get_version('CMakeLists.txt', 'HIGHS_VERSION_PATCH')
 
 # Get path to shared libraries (for local build only)
 CYTHON_DIR = pathlib.Path(__file__).parent / MODULE_NAME
-HIGHS_DIR = str(CYTHON_DIR.parent)
+HIGHS_DIR = str(CYTHON_DIR.resolve().parent)
 
 LIBRARY_DIRS = []
 LIBRARY_DIRS.append(str(CYTHON_DIR.parent / get_distutils_lib_path() / MODULE_NAME))
@@ -105,7 +105,7 @@ if sys.platform != 'win32':
 # Read in current GITHASH
 #with open('GITHASH', 'r') as f:
 #    GITHASH = f.read().strip()
-GITHASH = "holder"
+GITHASH = "n/a"
 
 # Here are the pound defines that HConfig.h would usually provide:
 TODAY_DATE = datetime.today().strftime('%Y-%m-%d')

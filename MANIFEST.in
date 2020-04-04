@@ -1,11 +1,8 @@
+prune /
 include CMakeLists.txt
 include PYREADME.rst
-include GITHASH
+include LICENSE
 global-include *.pxd *.pyx
 graft src/
 graft external/
-
-include pyHiGHS/examples/linprog_interface.py
-include pyHiGHS/examples/solve_mps.py
-include pyHiGHS/examples/25fv47.mps
-include pyHiGHS/examples/__init__.py
+global-exclude *~ *.pyc \#*\#
