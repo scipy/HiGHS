@@ -2,7 +2,7 @@
 
 # Define some things for the module
 MODULE_NAME = 'pyHiGHS'
-VERSION = '0.2.2'
+VERSION = '0.2.3'
 
 # Dependencies
 CYTHON_VERSION = '0.29.16'
@@ -42,7 +42,7 @@ class build_ext(_build_ext):
         _build_ext.finalize_options(self)
 
         # Modify the rpath to insert the directory where the SOs are installed;
-        # it will be a relative path, so module have it as it's working
+        # it will be a relative path, so module has it as it's working
         # directory
         if sys.platform != 'win32':
             self.rpath.append('./')
@@ -73,8 +73,7 @@ def get_sources(CMakeLists, start_token, end_token):
     sources = [str(pathlib.Path('src/' + s)) for s in sources]
     return sources
 
-# Preprocess the highs.pyx.in to pull info from the cmake files.
-# This step produces src/highs.pyx.
+# Get sources for each extension
 sources = get_sources('src/CMakeLists.txt', 'set(sources\n', ')')
 basiclu_sources = get_sources('src/CMakeLists.txt', 'set(basiclu_sources\n', ')')
 ipx_sources = get_sources('src/CMakeLists.txt', 'set(ipx_sources\n', ')')
@@ -107,7 +106,9 @@ if sys.platform != 'win32':
 #    GITHASH = f.read().strip()
 GITHASH = "n/a"
 
-# Here are the pound defines that HConfig.h would usually provide:
+# Here are the pound defines that HConfig.h would usually provide;
+# We provide an empty HConfig.h file and do the defs and undefs
+# here:
 TODAY_DATE = datetime.today().strftime('%Y-%m-%d')
 DEFINE_MACROS = [
     #('OPENMP', None),
@@ -129,7 +130,7 @@ UNDEF_MACROS = [
     'OSI_FOUND',
 ]
 
-# Naming conventions of shared libraries differ platform to platform:
+# Naming conventions of shared libraries differ platform to platform (used for unix build):
 SO_PREFIX = str(pathlib.Path(new_compiler().library_filename('', lib_type='shared')).with_suffix(''))
 SO_SUFFIX = str(pathlib.Path(sysconfig.get_config_var('EXT_SUFFIX')).with_suffix(''))
 if SO_SUFFIX is None:
@@ -191,7 +192,7 @@ if sys.platform != 'win32':
             language="c++",
             libraries=['basiclu' + SO_SUFFIX],
             library_dirs=LIBRARY_DIRS,
-            runtime_library_dirs=LIBRARY_DIRS, # for inplace
+            runtime_library_dirs=LIBRARY_DIRS,
             define_macros=DEFINE_MACROS,
             undef_macros=UNDEF_MACROS,
             extra_compile_args=EXTRA_COMPILE_ARGS,
@@ -209,7 +210,7 @@ if sys.platform != 'win32':
             ],
             language="c++",
             library_dirs=LIBRARY_DIRS,
-            runtime_library_dirs=LIBRARY_DIRS, # for inplace
+            runtime_library_dirs=LIBRARY_DIRS,
             libraries=['ipx' + SO_SUFFIX],
             define_macros=DEFINE_MACROS,
             undef_macros=UNDEF_MACROS,
@@ -231,11 +232,11 @@ if sys.platform != 'win32':
             extra_compile_args=EXTRA_COMPILE_ARGS,
             libraries=['highs' + SO_SUFFIX],
             library_dirs=LIBRARY_DIRS,
-            runtime_library_dirs=LIBRARY_DIRS, # for inplace
+            runtime_library_dirs=LIBRARY_DIRS,
         ),
     ]
 else:
-    # For Windows, it's a pain in the butt to export all symbols to DLLs,
+    # For Windows, it's a pain in the butt to export all symbols to DLLs;
     # we'll take the easy way out and compile everything from source to
     # create a single extension
     extensions = [
@@ -274,7 +275,6 @@ setup(
     },
     setup_requires=['numpy', 'Cython'],
     python_requires='>=3',
-    #include_package_data=True, # include example .mps file
 
     ext_modules=cythonize(extensions),
 )
