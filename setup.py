@@ -2,7 +2,7 @@
 
 # Define some things for the module
 MODULE_NAME = 'pyHiGHS'
-VERSION = '0.1.6'
+VERSION = '0.2.2'
 
 # Dependencies
 CYTHON_VERSION = '0.29.16'
@@ -30,6 +30,9 @@ def get_distutils_lib_path():
 class build_ext(_build_ext):
     '''Subclass build_ext to bootstrap numpy.'''
 
+    def get_export_symbols(self, ext):
+        return ext.export_symbols
+
     def finalize_options(self):
 
         # Make sure directory of shared libraries is in rpath
@@ -41,7 +44,8 @@ class build_ext(_build_ext):
         # Modify the rpath to insert the directory where the SOs are installed;
         # it will be a relative path, so module have it as it's working
         # directory
-        self.rpath.append('./')
+        if sys.platform != 'win32':
+            self.rpath.append('./')
 
         # Prevent numpy from thinking it's still in its setup process
         import numpy as np
@@ -88,15 +92,20 @@ HIGHS_VERSION_PATCH = get_version('CMakeLists.txt', 'HIGHS_VERSION_PATCH')
 
 # Get path to shared libraries (for local build only)
 CYTHON_DIR = pathlib.Path(__file__).parent / MODULE_NAME
-HIGHS_DIR = str(CYTHON_DIR.parent)
+HIGHS_DIR = str(CYTHON_DIR.resolve().parent)
 
 LIBRARY_DIRS = []
 LIBRARY_DIRS.append(str(CYTHON_DIR.parent / get_distutils_lib_path() / MODULE_NAME))
 
+# Windows can't have runtime_library_dirs
+RUNTIME_LIBRARY_DIRS = []
+if sys.platform != 'win32':
+    RUNTIME_LIBRARY_DIRS = LIBRARY_DIRS
+
 # Read in current GITHASH
 #with open('GITHASH', 'r') as f:
 #    GITHASH = f.read().strip()
-GITHASH = "holder"
+GITHASH = "n/a"
 
 # Here are the pound defines that HConfig.h would usually provide:
 TODAY_DATE = datetime.today().strftime('%Y-%m-%d')
@@ -127,8 +136,17 @@ if SO_SUFFIX is None:
     # https://bugs.python.org/issue19555
     SO_SUFFIX = str(pathlib.Path(sysconfig.get_config_var('SO')).with_suffix(''))
 
+# No prefix or suffix for Windows, for some reason it's ".dll" and ".pyd"
+if sys.platform == 'win32':
+    SO_PREFIX = ''
+    SO_SUFFIX = ''
+
 # We use some modern C++, as you should. HiGHS uses C++11, no penalty for going to C++14
-EXTRA_COMPILE_ARGS = ['-std=c++14']
+EXTRA_COMPILE_ARGS = []
+if sys.platform == 'win32':
+    EXTRA_COMPILE_ARGS.append('/std:c++14')
+else:
+    EXTRA_COMPILE_ARGS.append('-std=c++14')
 
 # Shared include dirs
 HIGHS_INCLUDE_DIRS = [
@@ -142,77 +160,99 @@ HIGHS_INCLUDE_DIRS = [
     str(pathlib.Path('src/interfaces/')),
 ]
 
-# Create shared library for each component
-extensions = [
+# For Linux/Mac we can split up into shared libraries that link to each other.
+# For Mac we need to do this so C sources can be compiled without -std=c++14 option
+if sys.platform != 'win32':
+    # Create shared library for each component
+    extensions = [
 
-    # BASICLU
-    Extension(
-        MODULE_NAME + '.' + SO_PREFIX + 'basiclu',
-        basiclu_sources,
-        include_dirs=[
-            str(pathlib.Path('src/')),
-            str(pathlib.Path('src/ipm/basiclu/include/')),
-    ],
-        language="c",
-        define_macros=DEFINE_MACROS,
-        undef_macros=UNDEF_MACROS,
-    ),
+        # BASICLU
+        Extension(
+            MODULE_NAME + '.' + SO_PREFIX + 'basiclu',
+            basiclu_sources,
+            include_dirs=[
+                str(pathlib.Path('src/')),
+                str(pathlib.Path('src/ipm/basiclu/include/')),
+            ],
+            language="c",
+            define_macros=DEFINE_MACROS,
+            undef_macros=UNDEF_MACROS,
+        ),
 
-    # IPX
-    Extension(
-        MODULE_NAME + '.' + SO_PREFIX + 'ipx',
-        ipx_sources,
-        include_dirs=[
-            str(pathlib.Path('src/')),
-            str(pathlib.Path('src/ipm/ipx/include/')),
-            str(pathlib.Path('src/ipm/basiclu/include/')),
-        ],
-        language="c++",
-        libraries=['basiclu' + SO_SUFFIX],
-        library_dirs=LIBRARY_DIRS,
-        runtime_library_dirs=LIBRARY_DIRS, # for inplace
-        define_macros=DEFINE_MACROS,
-        undef_macros=UNDEF_MACROS,
-        extra_compile_args=EXTRA_COMPILE_ARGS,
-    ),
+        # IPX
+        Extension(
+            MODULE_NAME + '.' + SO_PREFIX + 'ipx',
+            ipx_sources,
+            include_dirs=[
+                str(pathlib.Path('src/')),
+                str(pathlib.Path('src/ipm/ipx/include/')),
+                str(pathlib.Path('src/ipm/basiclu/include/')),
+            ],
+            language="c++",
+            libraries=['basiclu' + SO_SUFFIX],
+            library_dirs=LIBRARY_DIRS,
+            runtime_library_dirs=LIBRARY_DIRS, # for inplace
+            define_macros=DEFINE_MACROS,
+            undef_macros=UNDEF_MACROS,
+            extra_compile_args=EXTRA_COMPILE_ARGS,
+        ),
 
-    # HiGHS
-    Extension(
-        MODULE_NAME + '.libhighs',
-        sources,
-        include_dirs=[
-            str(pathlib.Path(MODULE_NAME + '/src/')),
-            str(pathlib.Path('src/')),
-            str(pathlib.Path('src/ipm/ipx/include/')),
-            str(pathlib.Path('src/lp_data/')),
-        ],
-        language="c++",
-        library_dirs=LIBRARY_DIRS,
-        runtime_library_dirs=LIBRARY_DIRS, # for inplace
-        libraries=['ipx' + SO_SUFFIX],
-        define_macros=DEFINE_MACROS,
-        undef_macros=UNDEF_MACROS,
-        extra_compile_args=EXTRA_COMPILE_ARGS
-    ),
+        # HiGHS
+        Extension(
+            MODULE_NAME + '.libhighs',
+            sources,
+            include_dirs=[
+                str(pathlib.Path(MODULE_NAME + '/src/')),
+                str(pathlib.Path('src/')),
+                str(pathlib.Path('src/ipm/ipx/include/')),
+                str(pathlib.Path('src/lp_data/')),
+            ],
+            language="c++",
+            library_dirs=LIBRARY_DIRS,
+            runtime_library_dirs=LIBRARY_DIRS, # for inplace
+            libraries=['ipx' + SO_SUFFIX],
+            define_macros=DEFINE_MACROS,
+            undef_macros=UNDEF_MACROS,
+            extra_compile_args=EXTRA_COMPILE_ARGS
+        ),
 
-    # Wrapper over HiGHS C++ API
-    Extension(
-        MODULE_NAME + '.highs_wrapper',
-        [
-            str(pathlib.Path(MODULE_NAME + '/src/highs_wrapper.pyx'))
-        ], #+ basiclu_sources + ipx_sources + sources,
-        include_dirs=[
-            str(pathlib.Path(MODULE_NAME+ '/src/')),
-        ] + HIGHS_INCLUDE_DIRS,
-        language="c++",
-        define_macros=DEFINE_MACROS,
-        undef_macros=UNDEF_MACROS,
-        extra_compile_args=EXTRA_COMPILE_ARGS,
-        libraries=['highs' + SO_SUFFIX],
-        library_dirs=LIBRARY_DIRS,
-        runtime_library_dirs=LIBRARY_DIRS, # for inplace
-    ),
-]
+        # Wrapper over HiGHS C++ API
+        Extension(
+            MODULE_NAME + '.highs_wrapper',
+            [
+                str(pathlib.Path(MODULE_NAME + '/src/highs_wrapper.pyx'))
+            ],
+            include_dirs=[
+                str(pathlib.Path(MODULE_NAME+ '/src/')),
+            ] + HIGHS_INCLUDE_DIRS,
+            language="c++",
+            define_macros=DEFINE_MACROS,
+            undef_macros=UNDEF_MACROS,
+            extra_compile_args=EXTRA_COMPILE_ARGS,
+            libraries=['highs' + SO_SUFFIX],
+            library_dirs=LIBRARY_DIRS,
+            runtime_library_dirs=LIBRARY_DIRS, # for inplace
+        ),
+    ]
+else:
+    # For Windows, it's a pain in the butt to export all symbols to DLLs,
+    # we'll take the easy way out and compile everything from source to
+    # create a single extension
+    extensions = [
+        Extension(
+            MODULE_NAME + '.highs_wrapper',
+            [
+                str(pathlib.Path(MODULE_NAME + '/src/highs_wrapper.pyx'))
+            ] + basiclu_sources + ipx_sources + sources,
+            include_dirs=[
+                str(pathlib.Path(MODULE_NAME+ '/src/')),
+            ] + HIGHS_INCLUDE_DIRS,
+            language="c++",
+            define_macros=DEFINE_MACROS,
+            undef_macros=UNDEF_MACROS,
+            extra_compile_args=EXTRA_COMPILE_ARGS,
+        ),
+    ]
 
 setup(
     name='scikit-highs',
