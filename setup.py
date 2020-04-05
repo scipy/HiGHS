@@ -57,6 +57,16 @@ class build_ext(_build_ext):
         import numpy as np
         self.include_dirs.append(np.get_include())
 
+        # see https://stackoverflow.com/questions/37752901/dylib-built-on-ci-cant-be-loaded
+        # Special treatment of rpath in case of OSX, to work around python
+        # distutils bug 36353. This constructs proper rpath arguments for clang.
+        # See https://bugs.python.org/issue36353
+        if sys.platform[:6] == "darwin":
+            for path in self.rpath:
+                for ext in self.extensions:
+                    ext.extra_link_args.append("-Wl,-rpath," + path)
+                self.rpath[:] = []
+
 # Create HConfig.h: this is usually created by cmake,
 # but we just need an empty file and we'll do the
 # pound defines here in setup.py
