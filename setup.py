@@ -2,7 +2,7 @@
 
 # Define some things for the module
 MODULE_NAME = 'pyHiGHS'
-VERSION = '0.2.3'
+VERSION = '0.3.0'
 
 # Dependencies
 CYTHON_VERSION = '0.29.16'
@@ -26,6 +26,12 @@ import sysconfig
 def get_distutils_lib_path():
     PLAT_SPEC = "%s-%d.%d" % (get_platform(), *sys.version_info[:2])
     return os.path.join("build", "lib.%s" % PLAT_SPEC)
+
+# see https://stackoverflow.com/questions/32757007/distutils-setup-generate-so-and-not-dylib-on-mac-os-x
+if sys.platform == 'darwin':
+    from distutils import sysconfig as distutils_sysconfig
+    vars = distutils_sysconfig.get_config_vars()
+    vars['LDSHARED'] = vars['LDSHARED'].replace('-bundle', '-dynamiclib')
 
 class build_ext(_build_ext):
     '''Subclass build_ext to bootstrap numpy.'''
