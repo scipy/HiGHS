@@ -279,6 +279,12 @@ def highs_wrapper(
     `options['solution_file']` is unset or `''`, then the solution
     will be printed to `stdout`.
 
+    If `ipm_iteration_limit` is reached, no solution will be
+    available, as in general interior-point methods are not feasible
+    while they are running.  However, if `simplex_iteration_limit` is
+    reached there will be a solution available, as each iteration is
+    at a feasible vertex.
+
     References
     ----------
     .. [1] https://www.maths.ed.ac.uk/hall/HiGHS

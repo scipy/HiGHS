@@ -1,13 +1,6 @@
 # Cython Additions
 
-In the cython directory exists a setup.py file that can be used to build the project without relying on the cmake build system.  I've been building it like this from the root directory:
-
-    python setup.py build_ext
-
-You can run the examples like this (again from the root directory):
-
-    python -m cython_wrapper.examples.linprog_interface
-    python -m cython_wrapper.examples.solve_mps
+See `PYREADME`.
 
 # HiGHS - Linear optimization software
 
