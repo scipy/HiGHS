@@ -184,6 +184,7 @@ gmsgenus.run
 gmsgenux.out
 /path/to/libhighs.so his 1 1
 ```
+
 OSI
 ---
 - `OSI_ROOT`:
