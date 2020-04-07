@@ -141,6 +141,8 @@ def highs_wrapper(
             - infinite_cost : double
                 Limit on cost coefficient: values larger than this
                 will be treated as infinite.
+            - ipm_iteration_limit : int
+                Iteration limit for interior-point solver.
             - large_matrix_value : double
                 Upper limit on abs(matrix entries): values larger than
                 this will be treated as infinite
@@ -193,7 +195,6 @@ def highs_wrapper(
 
             - simplex_iteration_limit : int
                 Iteration limit for simplex solver.
-
             - simplex_primal_edge_weight_strategy : int {0, 1}
                 Strategy for simplex primal edge weights:
                 Dantzig / Devex.  Corresponds to the following:
@@ -383,7 +384,10 @@ def highs_wrapper(
 
     print('Got', highs.highsModelStatusToString(model_status).decode())
 
-    # If the status is bad, don't look up the solution
+    # If the status is bad, don't look up the solution;
+    # note that if solver==ipm and iteration limit is reached,
+    # there is in general no solution available, but if
+    # solver==simplex, we're always on a feasible vertex
     if model_status in [
             HighsModelStatusNOTSET,
             HighsModelStatusLOAD_ERROR,
@@ -394,7 +398,7 @@ def highs_wrapper(
             HighsModelStatusPOSTSOLVE_ERROR,
             HighsModelStatusPRIMAL_INFEASIBLE,
             HighsModelStatusPRIMAL_UNBOUNDED,
-    ]:
+    ] or (model_status == HighsModelStatusREACHED_ITERATION_LIMIT and options.get('solver', None) == 'ipm'):
         return {
             'status': <int> model_status,
             'message': highs.highsModelStatusToString(model_status).decode(),
