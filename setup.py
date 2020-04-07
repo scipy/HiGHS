@@ -2,7 +2,7 @@
 
 # Define some things for the module
 MODULE_NAME = 'pyHiGHS'
-VERSION = '0.2.3'
+VERSION = '0.4.0'
 
 # Dependencies
 CYTHON_VERSION = '0.29.16'
