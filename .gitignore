@@ -1,4 +1,14 @@
 #################
+## Files not
+## needed by
+## scipy
+#################
+app/
+checks/
+examples/
+src/interfaces/
+
+#################
 ## Eclipse
 #################
 
