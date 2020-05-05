@@ -147,13 +147,12 @@ def configuration(parent_package='', top_path=None):
 
 if __name__ == '__main__':
     from numpy.distutils.core import setup
-    from setuptools import find_packages
-    config = **configuration(top_path='').todict()
+    config = configuration(top_path='').todict()
     config['name'] = 'scikit-highs'
     config['version'] = "0.6.0",
     config['author'] = 'Nicholas McKibben',
     config['author_email'] = 'nicholas.bgp@gmail.com',
-    config['packages'] = find_packages(),
+    #config['packages'] = find_packages(),
     config['scripts'] = [],
     config['url'] = 'https://github.com/mckib2/HiGHS',
     config['license'] = 'MIT',
