@@ -1,7 +1,8 @@
 # distutils: language=c++
 # cython: language_level=3
 
-import logging
+from scipy.optimize import OptimizeWarning
+from warnings import warn
 
 from libcpp.memory cimport unique_ptr
 
@@ -37,7 +38,7 @@ from HighsLp cimport (
 from HighsInfo cimport HighsInfo
 
 cdef str _opt_warning(name, val):
-    return '"%s" is not an accepted value for option "%s"' % (str(name), str(val))
+    return 'Option "%s" is "%s", but this is not a valid value. See documentation for valid options. Using default.' % (str(name), str(val))
 
 cdef apply_options(dict options, Highs & highs):
     '''Take options from dictionary and apply to HiGHS object.'''
@@ -76,7 +77,7 @@ cdef apply_options(dict options, Highs & highs):
         if val is not None:
             opt_status = highs.setHighsOptionValueInt(opt.encode(), val)
             if opt_status != HighsStatusOK:
-                logging.warning(_opt_warning(opt, val))
+                warn(_opt_warning(opt, val), OptimizeWarning)
 
     # Do all the doubles
     for opt in set([
@@ -96,7 +97,7 @@ cdef apply_options(dict options, Highs & highs):
         if val is not None:
             opt_status = highs.setHighsOptionValueDbl(opt.encode(), val)
             if opt_status != HighsStatusOK:
-                logging.warning(_opt_warning(opt, val))
+                warn(_opt_warning(opt, val), OptimizeWarning)
 
 
     # Do all the strings
@@ -105,7 +106,7 @@ cdef apply_options(dict options, Highs & highs):
         if val is not None:
             opt_status = highs.setHighsOptionValueStr(opt.encode(), val.encode())
             if opt_status != HighsStatusOK:
-                logging.warning(_opt_warning(opt, val))
+                warn(_opt_warning(opt, val), OptimizeWarning)
 
 
     # Do all the bool to strings
@@ -121,7 +122,7 @@ cdef apply_options(dict options, Highs & highs):
                 val0 = b'off'
             opt_status = highs.setHighsOptionValueStr(opt.encode(), val0)
             if opt_status != HighsStatusOK:
-                logging.warning(_opt_warning(opt, val))
+                warn(_opt_warning(opt, val), OptimizeWarning)
 
 
     # Do the actual bools
@@ -137,7 +138,7 @@ cdef apply_options(dict options, Highs & highs):
         if val is not None:
             opt_status = highs.setHighsOptionValueBool(opt.encode(), val)
             if opt_status != HighsStatusOK:
-                logging.warning(_opt_warning(opt, val))
+                warn(_opt_warning(opt, val), OptimizeWarning)
 
 
 def highs_wrapper(
