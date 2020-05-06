@@ -479,7 +479,7 @@ def highs_wrapper(
             # The scaled model has been solved to optimality, but not the
             # unscaled model, flag this up, but report the scaled model
             # status
-            logging.warning('model_status is not optimal, using scaled_model_status instead.')
+            warn('model_status is not optimal, using scaled_model_status instead.', OptimizeWarning)
             model_status = scaled_model_status
 
     # We might need an info object if we can look up the solution and a place to put solution
