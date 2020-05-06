@@ -4,11 +4,16 @@
 from scipy.optimize import OptimizeWarning
 from warnings import warn
 
+from libcpp.string cimport string
 from libcpp.memory cimport unique_ptr
 
 from HConst cimport (
     ML_NONE,
     PrimalDualStatusSTATUS_FEASIBLE_POINT,
+    HighsOptionTypeBOOL,
+    HighsOptionTypeINT,
+    HighsOptionTypeDOUBLE,
+    HighsOptionTypeSTRING,
 )
 from Highs cimport Highs
 from HighsStatus cimport (
@@ -36,15 +41,60 @@ from HighsLp cimport (
     HighsModelStatusREACHED_ITERATION_LIMIT,
 )
 from HighsInfo cimport HighsInfo
+from HighsOptions cimport (
+    HighsOptions,
+    OptionRecordBool,
+    OptionRecordInt,
+    OptionRecordDouble,
+    OptionRecordString,
+)
 
-cdef str _opt_warning(name, val):
+cdef str _opt_warning(name, val, valid_set=None):
+    cdef HighsOptions opts
+    cdef string name_encoded = name.encode()
+    for r in opts.records:
+        if r.name == name_encoded:
+
+            # BOOL
+            if r.type == HighsOptionTypeBOOL:
+                default_value = (<OptionRecordBool*> r).default_value
+                return ('Option "%s" is "%s", but only True or False is allowed. '
+                        'Using default: %s.' % (str(name), str(val), default_value))
+
+            # INT
+            if r.type == HighsOptionTypeINT:
+                lower_bound = (<OptionRecordInt*> r).lower_bound
+                upper_bound = (<OptionRecordInt*> r).upper_bound
+                default_value = (<OptionRecordInt*> r).default_value
+                return ('Option "%s" is "%s", but only values in %s are allowed. '
+                        'Using default: %d.' % (str(name), str(val), str(set(range(int(lower_bound), int(upper_bound)+1))), int(default_value)))
+
+            # DOUBLE
+            if r.type == HighsOptionTypeDOUBLE:
+                lower_bound = (<OptionRecordDouble*> r).lower_bound
+                upper_bound = (<OptionRecordDouble*> r).upper_bound
+                default_value = (<OptionRecordDouble*> r).default_value
+                return ('Option "%s" is "%s", but only values in (%g, %g) are allowed. '
+                        'Using default: %g.' % (str(name), str(val), lower_bound, upper_bound, default_value))
+
+            # STRING
+            if r.type == HighsOptionTypeSTRING:
+                if valid_set is not None:
+                    descr = 'but only values in %s are allowed. ' % str(set(valid_set))
+                else:
+                    descr = 'but this is an invalid value. %s. ' % r.description.decode()
+                default_value = (<OptionRecordString*> r).default_value.decode()
+                return ('Option "%s" is "%s", '
+                        '%s'
+                        'Using default: %s.' % (str(name), str(val), descr, default_value))
+
     return 'Option "%s" is "%s", but this is not a valid value. See documentation for valid options. Using default.' % (str(name), str(val))
 
 cdef apply_options(dict options, Highs & highs):
     '''Take options from dictionary and apply to HiGHS object.'''
 
     # Send logging to dummy file to get rid of output from stdout
-    if options.get('message_level', None) == ML_NONE:
+    if options.get('message_level', None) == <int> ML_NONE:
         highs.setHighsLogfile(NULL)
         highs.setHighsOutput(NULL)
 
@@ -116,13 +166,16 @@ cdef apply_options(dict options, Highs & highs):
     ]):
         val = options.get(opt, None)
         if val is not None:
-            if val:
-                val0 = b'on'
+            if val in [True, False]:
+                if val == True:
+                    val0 = b'on'
+                elif val == False:
+                    val0 = b'off'
+                opt_status = highs.setHighsOptionValueStr(opt.encode(), val0)
+                if opt_status != HighsStatusOK:
+                    warn(_opt_warning(opt, val, valid_set=[True, False]), OptimizeWarning)
             else:
-                val0 = b'off'
-            opt_status = highs.setHighsOptionValueStr(opt.encode(), val0)
-            if opt_status != HighsStatusOK:
-                warn(_opt_warning(opt, val), OptimizeWarning)
+                warn(_opt_warning(opt, val, valid_set=[True, False]), OptimizeWarning)
 
 
     # Do the actual bools
@@ -136,8 +189,11 @@ cdef apply_options(dict options, Highs & highs):
     ]):
         val = options.get(opt, None)
         if val is not None:
-            opt_status = highs.setHighsOptionValueBool(opt.encode(), val)
-            if opt_status != HighsStatusOK:
+            if val in [True, False]:
+                opt_status = highs.setHighsOptionValueBool(opt.encode(), val)
+                if opt_status != HighsStatusOK:
+                    warn(_opt_warning(opt, val), OptimizeWarning)
+            else:
                 warn(_opt_warning(opt, val), OptimizeWarning)
 
 
