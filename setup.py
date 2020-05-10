@@ -155,6 +155,24 @@ def configuration(parent_package='', top_path=None):
     )
     ext._pre_build_hook = pre_build_hook
 
+    # Experiment with linalg
+    ext = config.add_extension(
+        'linalg',
+        sources=[
+            'pyHiGHS/src/linalg.cxx',
+            'src/simplex/HMatrix.cpp',
+            'src/simplex/HVector.cpp',
+        ],
+        include_dirs=[
+            'pyHiGHS/src/',
+            'src/',
+            'src/simplex/',
+            'src/lp_data/',
+        ],
+        language='c++',
+    )
+    ext._pre_build_hook = pre_build_hook
+
     return config
 
 
