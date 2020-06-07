@@ -26,12 +26,15 @@ enum PresolveRule {
   FIXED_COL,
   SING_ROW,
   DOUBLETON_EQUATION,
+  REMOVE_FORCING_CONSTRAINTS,
   FORCING_ROW,
   REDUNDANT_ROW,
   DOMINATED_ROW_BOUNDS,
+  REMOVE_COLUMN_SINGLETONS,
   FREE_SING_COL,
   SING_COL_DOUBLETON_INEQ,
   IMPLIED_FREE_SING_COL,
+  REMOVE_DOMINATED_COLUMNS,
   DOMINATED_COLS,
   WEAKLY_DOMINATED_COLS,
   DOMINATED_COL_BOUNDS,
@@ -119,10 +122,10 @@ class PresolveTimer {
   }
 
   void reportClocks() {
-    std::vector<int> clocks(PRESOLVE_RULES_COUNT - 1);
+    std::vector<int> clocks;
     for (int id = 0; id < PRESOLVE_RULES_COUNT - 1; id++) {
       assert(rules_[id].rule_id == id);
-      clocks[id] = rules_[id].clock_id;
+      clocks.push_back(rules_[id].clock_id);
     }
     std::cout << std::endl;
     timer_.report("grep-Presolve", clocks);
