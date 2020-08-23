@@ -155,6 +155,7 @@ def configuration(parent_package='', top_path=None):
             'src/',
             'src/io/',
             'src/lp_data/',
+            'src/simplex/',
         ],
         language='c++',
     )
