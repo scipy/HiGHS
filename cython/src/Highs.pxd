@@ -46,3 +46,4 @@ cdef extern from "Highs.h":
         HighsStatus setHighsOptionValueDbl "setHighsOptionValue" (const string & option, const double value)
 
         string primalDualStatusToString(const int primal_dual_status)
+        HighsStatus setBasis()

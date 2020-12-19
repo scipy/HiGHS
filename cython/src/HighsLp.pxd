@@ -5,7 +5,7 @@ from libcpp cimport bool
 from libcpp.string cimport string
 from libcpp.vector cimport vector
 
-from HConst cimport HighsBasisStatus
+from HConst cimport HighsBasisStatus, HighsVarType
 
 cdef extern from "HighsLp.h" nogil:
     # From HiGHS/src/lp_data/HighsLp.h
@@ -31,7 +31,7 @@ cdef extern from "HighsLp.h" nogil:
         vector[string] row_names_
         vector[string] col_names_
 
-        vector[int] integrality_
+        vector[HighsVarType] integrality_
 
     ctypedef enum ObjSense:
         ObjSenseMINIMIZE "ObjSense::MINIMIZE" = 1

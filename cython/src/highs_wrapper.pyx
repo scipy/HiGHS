@@ -5,10 +5,12 @@ from scipy.optimize import OptimizeWarning
 from warnings import warn
 import numbers
 
+from libc.math cimport floor
 from libc.stdio cimport stdout
 from libcpp.string cimport string
 from libcpp.memory cimport unique_ptr
 from libcpp.map cimport map as cppmap
+from libcpp.vector cimport vector
 
 from HighsIO cimport (
     ML_NONE,
@@ -33,6 +35,10 @@ from HConst cimport (
     HighsModelStatusREACHED_DUAL_OBJECTIVE_VALUE_UPPER_BOUND,
     HighsModelStatusREACHED_TIME_LIMIT,
     HighsModelStatusREACHED_ITERATION_LIMIT,
+
+    HighsVarType,
+    HighsVarTypeCONTINUOUS,
+    HighsVarTypeINTEGER,
 )
 from Highs cimport Highs
 from HighsStatus cimport (
@@ -55,6 +61,7 @@ from HighsOptions cimport (
     OptionRecordDouble,
     OptionRecordString,
 )
+from HighsMipSolver cimport HighsMipSolver
 
 # options to reference for default values and bounds;
 # make a map to quickly lookup
@@ -134,6 +141,9 @@ cdef apply_options(dict options, Highs & highs):
             'max_threads',
             'message_level',
             'min_threads',
+            'mip_max_nodes',
+            'mip_max_leaves',
+            'mip_report_level',
             'simplex_crash_strategy',
             'simplex_dual_edge_weight_strategy',
             'simplex_dualise_strategy',
@@ -165,6 +175,9 @@ cdef apply_options(dict options, Highs & highs):
             'infinite_cost',
             'ipm_optimality_tolerance',
             'large_matrix_value',
+            'mip_epsilon',
+            'mip_heuristic_effort',
+            'mip_optimality_tolerance',
             'primal_feasibility_tolerance',
             'simplex_initial_condition_tolerance',
             'small_matrix_value',
@@ -179,7 +192,6 @@ cdef apply_options(dict options, Highs & highs):
                 opt_status = highs.setHighsOptionValueDbl(opt.encode(), val)
                 if opt_status != HighsStatusOK:
                     warn(_opt_warning(opt.encode(), val), OptimizeWarning)
-
 
     # Do all the strings
     for opt in set(['solver']):
@@ -232,6 +244,110 @@ cdef apply_options(dict options, Highs & highs):
                 warn(_opt_warning(opt.encode(), val), OptimizeWarning)
 
 
+cdef dict callLpSolver(dict options, const HighsLp& lp):
+    # Create the options
+    cdef Highs highs
+    apply_options(options, highs)
+    highs.passModel(lp)
+    highs.setBasis()
+    cdef HighsStatus run_status = highs.run()
+
+    # Extract what we need from the solution
+    cdef HighsModelStatus model_status = highs.getModelStatus()
+    cdef HighsModelStatus scaled_model_status = highs.getModelStatus(True)
+    if model_status != scaled_model_status:
+        if scaled_model_status == HighsModelStatusOPTIMAL:
+            # The scaled model has been solved to optimality, but not the
+            # unscaled model, flag this up, but report the scaled model
+            # status
+            warn('model_status is not optimal, using scaled_model_status instead.', OptimizeWarning)
+            model_status = scaled_model_status
+
+    # We might need an info object if we can look up the solution and a place to put solution
+    cdef HighsInfo info = highs.getHighsInfo() # it should always be safe to get the info object
+    cdef HighsSolution solution
+
+    # If the status is bad, don't look up the solution
+    if info.primal_status != PrimalDualStatusSTATUS_FEASIBLE_POINT:
+        return {
+            'status': <int> model_status,
+            'message': highs.highsModelStatusToString(model_status).decode(),
+            'simplex_nit': info.simplex_iteration_count,
+            'ipm_nit': info.ipm_iteration_count,
+            #'fun': info.objective_function_value,
+            'fun': None,
+            'crossover_nit': info.crossover_iteration_count,
+        }
+    # If the model status is such that the solution can be read
+    else:
+        # Should be safe to read the solution:
+        solution = highs.getSolution()
+        return {
+            'status': <int> model_status,
+            'message': highs.highsModelStatusToString(model_status).decode(),
+
+            # Primal solution
+            'x': [solution.col_value[ii] for ii in range(lp.numCol_)],
+
+            # Ax + s = b => Ax = b - s
+            # Note: this is for all constraints (A_ub and A_eq)
+            'slack': [lp.rowUpper_[ii] - solution.row_value[ii] for ii in range(lp.numRow_)],
+
+            # slacks in HiGHS appear as Ax - s, not Ax + s, so lambda is negated;
+            # lambda are the lagrange multipliers associated with Ax=b
+            'lambda': [-1*solution.row_dual[ii] for ii in range(lp.numRow_)],
+
+            # s are the lagrange multipliers associated with bound conditions
+            's': [solution.col_dual[ii] for ii in range(lp.numCol_) if solution.col_dual[ii]],
+
+            'fun': info.objective_function_value,
+            'simplex_nit': info.simplex_iteration_count,
+            'ipm_nit': info.ipm_iteration_count,
+            'crossover_nit': info.crossover_iteration_count,
+        }
+
+
+
+cdef dict callMipSolver(dict options, const HighsLp& lp):
+    cdef Highs highs
+    apply_options(options, highs)
+    cdef unique_ptr[HighsMipSolver] solver = unique_ptr[HighsMipSolver](new HighsMipSolver(highs.getHighsOptions(), lp))
+    solver.get().run()
+    cdef const HighsSolution* solution = &(solver.get().presolve_.data_.recovered_solution_)
+    cdef double obj
+    cdef double boundviol = 0
+    cdef double intviol = 0
+    cdef double rowviol = 0
+    cdef double mip_feasibility_tol = solver.get().options_mip_.mip_feasibility_tolerance
+    cdef int ii
+    if int(solution.col_value.size()) == lp.numCol_:
+        print('found solution')
+        obj = lp.offset_
+
+        for ii in range(lp.numCol_):
+            obj += lp.colCost_[ii]*solution.col_value[ii]
+            boundviol = max(boundviol, lp.colLower_[ii] - solution.col_value[ii])
+            boundviol = max(boundviol, solution.col_value[ii] - lp.colUpper_[ii])
+            if lp.integrality_[ii] == HighsVarTypeINTEGER:
+                intviol = max(abs(floor(solution.col_value[ii] + 0.5) - solution.col_value[ii]), intviol)
+
+        for ii in range(lp.numRow_):
+            rowviol = max(rowviol, lp.rowLower_[ii] - solution.row_value[ii])
+            rowviol = max(rowviol, solution.row_value[ii] - lp.rowUpper_[ii])
+
+        feasible = ((boundviol <= mip_feasibility_tol) and
+                    (intviol <= mip_feasibility_tol) and
+                    (rowviol <= mip_feasibility_tol))
+
+        return {
+            'x': [solution.col_value[ii] for ii in range(lp.numCol_)],
+            'fun': obj,
+            'feasible': feasible,
+        }
+    return {
+        'fun': None,
+    }
+
 def highs_wrapper(
         double[::1] c,
         int[::1] astart,
@@ -241,6 +357,7 @@ def highs_wrapper(
         double[::1] rhs,
         double[::1] lb,
         double[::1] ub,
+        int[::1] intcon,
         dict options):
     '''Solve linear programs using HiGHS [1]_.
 
@@ -271,6 +388,10 @@ def highs_wrapper(
     ub : 1-D array (or None), (n,)
         Upper bounds on solution variables x.  If ``ub=None``, then an
         array of ``inf`` is assumed.
+    intcon : 1-D array, (k,)
+        Indices of integer constrained variables.  All entries are
+        assumed to be > 0 and < len(c) with no duplicates.  The caller
+        is expected to perform this checking.
     options : dict
         A dictionary of solver options with the following fields:
 
@@ -359,6 +480,29 @@ def highs_wrapper(
 
             - min_threads : int
                 Minimum number of threads in parallel execution.
+
+            - mip_max_nodes : int
+                MIP solver max number of nodes.  Must be between 0 and
+                ``HIGHS_CONST_I_INF``, default is ``HIGHS_CONST_I_INF``.
+
+            - mip_max_leaves : int
+                MIP solver max number of leave nodes. Must be between 0
+                and ``HIGHS_CONST_I_INF``, default is ``HIGHS_CONST_I_INF``.
+
+            - mip_report_level : {0, 1, 2}
+                MIP solver reporting level. Default is 1.
+
+            - mip_feasibility_tolerance : double
+                MIP feasibility tolerance. Must be between 1e-10 and
+                ``HIGHS_CONST_INF``, default is 1e-6.
+
+            - mip_epsilon : double
+                MIP epsilon tolerance. Must be between 1e-15 and
+                ``HIGHS_CONST_INF``, default is 1e-9.
+
+            - mip_heuristic_effort : double
+                Effort spent for MIP heuristics. Must be between 0.0 and
+                1.0, default is 0.05.
 
             - mps_parser_type_free : bool
                 Use free format MPS parsing.
@@ -556,10 +700,10 @@ def highs_wrapper(
     .. [2] https://www.maths.ed.ac.uk/hall/HiGHS/HighsOptions.html
     '''
 
-
     cdef int numcol = c.size
     cdef int numrow = rhs.size
     cdef int numnz = avalue.size
+    cdef int numint = intcon.size
 
     # Fill up a HighsLp object
     cdef HighsLp lp
@@ -620,74 +764,12 @@ def highs_wrapper(
         lp.Aindex_.empty()
         lp.Avalue_.empty()
 
-    # Create the options
-    cdef Highs highs
-    apply_options(options, highs)
-
-    # Make a Highs object and pass it everything
-    cdef HighsModelStatus err_model_status = HighsModelStatusNOTSET
-    cdef HighsStatus init_status = highs.passModel(lp)
-    if init_status != HighsStatusOK:
-        if init_status != HighsStatusWarning:
-            err_model_status = HighsModelStatusMODEL_ERROR
-            return {
-                'status': <int> err_model_status,
-                'message': highs.highsModelStatusToString(err_model_status).decode(),
-            }
-
-    # Solve the LP
-    cdef HighsStatus run_status = highs.run()
-
-    # Extract what we need from the solution
-    cdef HighsModelStatus model_status = highs.getModelStatus()
-    cdef HighsModelStatus scaled_model_status = highs.getModelStatus(True)
-    if model_status != scaled_model_status:
-        if scaled_model_status == HighsModelStatusOPTIMAL:
-            # The scaled model has been solved to optimality, but not the
-            # unscaled model, flag this up, but report the scaled model
-            # status
-            warn('model_status is not optimal, using scaled_model_status instead.', OptimizeWarning)
-            model_status = scaled_model_status
-
-    # We might need an info object if we can look up the solution and a place to put solution
-    cdef HighsInfo info = highs.getHighsInfo() # it should always be safe to get the info object
-    cdef HighsSolution solution
-
-    # If the status is bad, don't look up the solution
-    if info.primal_status != PrimalDualStatusSTATUS_FEASIBLE_POINT:
-        return {
-            'status': <int> model_status,
-            'message': highs.highsModelStatusToString(model_status).decode(),
-            'simplex_nit': info.simplex_iteration_count,
-            'ipm_nit': info.ipm_iteration_count,
-            #'fun': info.objective_function_value,
-            'fun': None,
-            'crossover_nit': info.crossover_iteration_count,
-        }
-    # If the model status is such that the solution can be read
-    else:
-        # Should be safe to read the solution:
-        solution = highs.getSolution()
-        return {
-            'status': <int> model_status,
-            'message': highs.highsModelStatusToString(model_status).decode(),
-
-            # Primal solution
-            'x': [solution.col_value[ii] for ii in range(numcol)],
-
-            # Ax + s = b => Ax = b - s
-            # Note: this is for all constraints (A_ub and A_eq)
-            'slack': [rhs[ii] - solution.row_value[ii] for ii in range(numrow)],
-
-            # slacks in HiGHS appear as Ax - s, not Ax + s, so lambda is negated;
-            # lambda are the lagrange multipliers associated with Ax=b
-            'lambda': [-1*solution.row_dual[ii] for ii in range(numrow)],
-
-            # s are the lagrange multipliers associated with bound conditions
-            's': [solution.col_dual[ii] for ii in range(numcol) if solution.col_dual[ii]],
-
-            'fun': info.objective_function_value,
-            'simplex_nit': info.simplex_iteration_count,
-            'ipm_nit': info.ipm_iteration_count,
-            'crossover_nit': info.crossover_iteration_count,
-        }
+    # Solve the LP or MIP
+    cdef is_mip = numint > 0
+    cdef int idx
+    if is_mip:
+        lp.integrality_ = vector[HighsVarType](numcol, HighsVarTypeCONTINUOUS)
+        for idx in intcon:
+            lp.integrality_[idx] = HighsVarTypeINTEGER
+        return callMipSolver(options, lp)
+    return callLpSolver(options, lp)

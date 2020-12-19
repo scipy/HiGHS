@@ -11,6 +11,12 @@ from HighsLp cimport (
     ObjSense,
     ObjSenseMINIMIZE,
 )
+from HConst cimport (
+    HighsVarType,
+    HighsVarTypeCONTINUOUS,
+    HighsVarTypeINTEGER,
+)
+
 
 from scipy.sparse import csc_matrix
 
@@ -21,7 +27,7 @@ cdef extern from "HMPSIO.h" nogil:
                          const vector[double]& Avalue, const vector[double]& colCost,
                          const vector[double]& colLower, const vector[double]& colUpper,
                          const vector[double]& rowLower, const vector[double]& rowUpper,
-                         const vector[int]& integerColumn, const vector[string]& col_names,
+                         const vector[HighsVarType]& integerColumn, const vector[string]& col_names,
                          const vector[string]& row_names, const bool use_free_format)
 
 def mpswriter(
@@ -91,19 +97,20 @@ def mpswriter(
         rowLower.push_back(lhs[ii])
         rowUpper.push_back(rhs[ii])
 
-    cdef vector[int] integerColumn
-    integerColumn.push_back(0)
-    integerColumn.clear()
-    for ii in range(integer_valued.size):
-        integerColumn.push_back(integer_valued[ii])
+    cdef vector[HighsVarType] integerColumn = vector[HighsVarType](numCol, HighsVarTypeCONTINUOUS)
+    for ii in integer_valued:
+        if ii > numCol:
+            print(f'Integer {ii} index out of range of array with size {numCol}! Skipping!')
+        else:
+            integerColumn[ii] = HighsVarTypeINTEGER
 
     cdef vector[string] row_names
     cdef vector[string] col_names
     cdef int jj = 0
     for ii in range(numRow):
-        row_names.push_back(b'row%d' % ii)
+        row_names.push_back(b'r%d' % ii)
     for jj in range(numCol):
-        col_names.push_back(b'col%d' % jj)
+        col_names.push_back(b'c%d' % jj)
 
     cdef FILE * logfile = fopen(filename.c_str(), 'w')
 

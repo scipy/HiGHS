@@ -62,3 +62,8 @@ cdef extern from "HConst.h" nogil:
         HighsOptionTypeINT "HighsOptionType::INT"
         HighsOptionTypeDOUBLE "HighsOptionType::DOUBLE"
         HighsOptionTypeSTRING "HighsOptionType::STRING"
+
+    cdef enum HighsVarType:
+        HighsVarTypeCONTINUOUS "HighsVarType::CONTINUOUS" = 0
+        HighsVarTypeIMPLICIT_INTEGER "HighsVarType::IMPLICIT_INTEGER"
+        HighsVarTypeINTEGER "HighsVarType::INTEGER"

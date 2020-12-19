@@ -113,6 +113,8 @@ def configuration(parent_package='', top_path=None):
             'cython/src/',
             'src/',
             'src/lp_data/',
+            'src/mip/',
+            'src/presolve/',
 
             # highs
             'src/',

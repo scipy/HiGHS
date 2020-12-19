@@ -10,7 +10,7 @@ from libcpp.vector cimport vector
 from HConst cimport HighsOptionType
 
 cdef extern from "HighsOptions.h" nogil:
-
+    # from src/lp_data/HighsOptions.h
     cdef cppclass OptionRecord:
         HighsOptionType type
         string name
@@ -95,7 +95,11 @@ cdef extern from "HighsOptions.h" nogil:
 
         # Options for MIP solver
         int mip_max_nodes
+        int mip_max_leaves
         int mip_report_level
+        double mip_feasibility_tolerance
+        double mip_epsilon
+        double mip_heuristic_effort
 
         # Switch for MIP solver
         bool mip
