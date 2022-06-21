@@ -1,0 +1,36 @@
+name: "Rebase fork from upstream"
+on:
+  schedule:
+    - cron: '0 8 * * *' # Every day on 8:00 UTC
+  pull_request:
+    paths:
+    - '.github/workflows/upstream-rebase.yml'
+  push:
+    paths:
+    - '.github/workflows/upstream-rebase.yml'
+  workflow_dispatch:
+
+jobs:
+  upstream-rebase:
+    runs-on: ubuntu-latest
+    steps:
+    # Checkout this repo
+    - uses: actions/checkout@v3
+    # Get the latest version tag from the upstream
+    - run: git remote add upstream https://github.com/ERGO-Code/HiGHS.git
+    - run: git fetch upstream
+    - run: |
+        echo "latestTag=$(git tag -l --sort -version:refname | head -n 1)" >> $GITHUB_ENV
+        echo "$latestTag"
+    # Rebase from the main branch to the latest tag
+    - run: git fetch origin
+    - run: git checkout main
+    - run: git rebase upstream/$latestTag
+    - run: git push -f origin main
+    # Create a Pull request to pull the new tag into the main branch
+    - uses: peter-evans/create-pull-request@v4
+      with:
+        title: "Rebase fork from upstream to $latestTag"
+        base: main
+        branch: upstream-rebase
+        commit-message: "[Bot] Rebase fork from upstream to $latestTag"
