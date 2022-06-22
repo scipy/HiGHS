@@ -12,6 +12,9 @@ on:
 
 jobs:
   upstream-rebase:
+    # Only run if either on the scipy/HiGHS repo or if the event is not scheduled
+    # This prevents running scheduled jobs on forks
+    if: github.repository == 'scipy/HiGHS' || github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
     # Checkout this repo
