@@ -243,6 +243,8 @@ pip-log.txt
 #SCIP interface
 lpi_highs.cpp
 
+src/interfaces/highspy/highspy/highs_bindings.*.so
+
 # Model written with HiGHSDEV=on
 HighsRunModel.mps
 
@@ -261,3 +263,5 @@ InvalidBasis.bas
 adlittle.bas
 adlittle.lp
 qjh.mps
+
+*.whl

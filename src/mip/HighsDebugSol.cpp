@@ -2,19 +2,22 @@
 /*                                                                       */
 /*    This file is part of the HiGHS linear optimization suite           */
 /*                                                                       */
-/*    Written and engineered 2008-2021 at the University of Edinburgh    */
+/*    Written and engineered 2008-2022 at the University of Edinburgh    */
 /*                                                                       */
 /*    Available as open-source under the MIT License                     */
 /*                                                                       */
-/*    Authors: Julian Hall, Ivet Galabova, Qi Huangfu, Leona Gottwald    */
-/*    and Michael Feldmeier                                              */
+/*    Authors: Julian Hall, Ivet Galabova, Leona Gottwald and Michael    */
+/*    Feldmeier                                                          */
 /*                                                                       */
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 #include "mip/HighsDebugSol.h"
 
 #ifdef HIGHS_DEBUGSOL
 
+#include <fstream>
+
 #include "io/FilereaderMps.h"
+#include "lp_data/HighsLpUtils.h"
 #include "mip/HighsDomain.h"
 #include "mip/HighsMipSolver.h"
 #include "mip/HighsMipSolverData.h"
@@ -40,7 +43,7 @@ void HighsDebugSol::activate() {
       std::map<std::string, int> nametoidx;
 
       for (HighsInt i = 0; i != mipsolver->model_->num_col_; ++i)
-        nametoidx["C" + std::to_string(i)] = i;
+        nametoidx["c" + std::to_string(i)] = i;
 
       debugSolution.resize(mipsolver->model_->num_col_, 0.0);
       while (!file.eof()) {
@@ -165,6 +168,29 @@ void HighsDebugSol::checkCut(const HighsInt* Rindex, const double* Rvalue,
   assert(violation <= mipsolver->mipdata_->feastol);
 }
 
+void HighsDebugSol::checkRowAggregation(const HighsLp& lp,
+                                        const HighsInt* Rindex,
+                                        const double* Rvalue, HighsInt Rlen) {
+  if (!debugSolActive) return;
+  HighsCDouble violation = 0.0;
+
+  HighsSolution dbgSol;
+  dbgSol.dual_valid = false;
+  dbgSol.value_valid = true;
+  dbgSol.col_value = debugSolution;
+  calculateRowValues(lp, dbgSol);
+  for (HighsInt i = 0; i < Rlen; ++i) {
+    if (Rindex[i] < lp.num_col_)
+      violation += dbgSol.col_value[Rindex[i]] * Rvalue[i];
+    else
+      violation += dbgSol.row_value[Rindex[i] - lp.num_col_] * Rvalue[i];
+  }
+
+  double viol = fabs(double(violation));
+
+  assert(viol <= mipsolver->mipdata_->feastol);
+}
+
 void HighsDebugSol::checkRow(const HighsInt* Rindex, const double* Rvalue,
                              HighsInt Rlen, double Rlower, double Rupper) {
   if (!debugSolActive) return;
@@ -221,21 +247,22 @@ void HighsDebugSol::checkVlb(HighsInt col, HighsInt vlbcol, double vlbcoef,
 }
 
 void HighsDebugSol::checkConflictReasonFrontier(
-    const std::set<HighsInt>& reasonSideFrontier,
+    const std::set<HighsDomain::ConflictSet::LocalDomChg>& reasonSideFrontier,
     const std::vector<HighsDomainChange>& domchgstack) const {
   if (!debugSolActive) return;
 
   HighsInt numActiveBoundChgs = 0;
-  for (HighsInt i : reasonSideFrontier) {
-    HighsInt col = domchgstack[i].column;
+  for (const HighsDomain::ConflictSet::LocalDomChg& domchg :
+       reasonSideFrontier) {
+    HighsInt col = domchg.domchg.column;
 
-    if (domchgstack[i].boundtype == HighsBoundType::kLower) {
+    if (domchg.domchg.boundtype == HighsBoundType::kLower) {
       if (debugSolution[col] >=
-          domchgstack[i].boundval - mipsolver->mipdata_->feastol)
+          domchg.domchg.boundval - mipsolver->mipdata_->feastol)
         ++numActiveBoundChgs;
     } else {
       if (debugSolution[col] <=
-          domchgstack[i].boundval + mipsolver->mipdata_->feastol)
+          domchg.domchg.boundval + mipsolver->mipdata_->feastol)
         ++numActiveBoundChgs;
     }
   }
@@ -244,23 +271,25 @@ void HighsDebugSol::checkConflictReasonFrontier(
 }
 
 void HighsDebugSol::checkConflictReconvergenceFrontier(
-    const std::set<HighsInt>& reconvergenceFrontier, HighsInt reconvDomchgPos,
+    const std::set<HighsDomain::ConflictSet::LocalDomChg>&
+        reconvergenceFrontier,
+    const HighsDomain::ConflictSet::LocalDomChg& reconvDomchg,
     const std::vector<HighsDomainChange>& domchgstack) const {
   if (!debugSolActive) return;
 
   HighsInt numActiveBoundChgs = 0;
-  for (HighsInt i : reconvergenceFrontier) {
-    HighsInt col = domchgstack[i].column;
+  for (const HighsDomain::ConflictSet::LocalDomChg& domchg :
+       reconvergenceFrontier) {
+    HighsInt col = domchg.domchg.column;
 
-    if (domchgstack[i].boundtype == HighsBoundType::kLower) {
-      if (debugSolution[col] >= domchgstack[i].boundval) ++numActiveBoundChgs;
+    if (domchg.domchg.boundtype == HighsBoundType::kLower) {
+      if (debugSolution[col] >= domchg.domchg.boundval) ++numActiveBoundChgs;
     } else {
-      if (debugSolution[col] <= domchgstack[i].boundval) ++numActiveBoundChgs;
+      if (debugSolution[col] <= domchg.domchg.boundval) ++numActiveBoundChgs;
     }
   }
 
-  auto reconvChg =
-      mipsolver->mipdata_->domain.flip(domchgstack[reconvDomchgPos]);
+  auto reconvChg = mipsolver->mipdata_->domain.flip(reconvDomchg.domchg);
 
   if (reconvChg.boundtype == HighsBoundType::kLower) {
     if (debugSolution[reconvChg.column] >= reconvChg.boundval)

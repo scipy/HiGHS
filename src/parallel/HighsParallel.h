@@ -28,7 +28,9 @@ inline void initialize_scheduler(int numThreads = 0) {
   HighsTaskExecutor::initialize(numThreads);
 }
 
-inline int num_threads() { return HighsTaskExecutor::getNumWorkerThreads(); }
+inline int num_threads() {
+  return HighsTaskExecutor::getThisWorkerDeque()->getNumWorkers();
+}
 
 inline int thread_num() {
   return HighsTaskExecutor::getThisWorkerDeque()->getOwnerId();
@@ -55,8 +57,7 @@ inline void sync(HighsSplitDeque* localDeque) {
       // spawn already
       break;
     case HighsSplitDeque::Status::kStolen:
-      HighsTaskExecutor::getGlobalTaskExecutor()->sync_stolen_task(
-          localDeque, popResult.second);
+      HighsTaskExecutor::sync_stolen_task(localDeque, popResult.second);
       break;
     case HighsSplitDeque::Status::kWork:
       popResult.second->run();
@@ -64,23 +65,60 @@ inline void sync(HighsSplitDeque* localDeque) {
 }
 
 inline void sync() { sync(HighsTaskExecutor::getThisWorkerDeque()); }
+class TaskGroup {
+  HighsSplitDeque* workerDeque;
+  int dequeHead;
+
+ public:
+  TaskGroup() {
+    workerDeque = HighsTaskExecutor::getThisWorkerDeque();
+    dequeHead = workerDeque->getCurrentHead();
+  }
+
+  template <typename F>
+  void spawn(F&& f) const {
+    highs::parallel::spawn(workerDeque, std::forward<F>(f));
+  }
+
+  void sync() const {
+    assert(workerDeque->getCurrentHead() > dequeHead);
+    highs::parallel::sync(workerDeque);
+  }
+
+  void taskWait() const {
+    while (workerDeque->getCurrentHead() > dequeHead)
+      highs::parallel::sync(workerDeque);
+  }
+
+  void cancel() {
+    for (int i = dequeHead; i < workerDeque->getCurrentHead(); ++i)
+      workerDeque->cancelTask(i);
+  }
+
+  ~TaskGroup() {
+    cancel();
+    taskWait();
+  }
+};
 
 template <typename F>
 void for_each(HighsInt start, HighsInt end, F&& f, HighsInt grainSize = 1) {
   if (end - start <= grainSize) {
     f(start, end);
-    return;
+  } else {
+    TaskGroup tg;
+
+    do {
+      HighsInt split = (start + end) >> 1;
+      tg.spawn([split, end, grainSize, &f]() {
+        for_each(split, end, f, grainSize);
+      });
+      end = split;
+    } while (end - start > grainSize);
+
+    f(start, end);
+    tg.taskWait();
   }
-
-  HighsSplitDeque* workerDeque = HighsTaskExecutor::getThisWorkerDeque();
-
-  HighsInt split = (start + end) >> 1;
-  spawn(workerDeque,
-        [split, end, grainSize, &f]() { for_each(split, end, f, grainSize); });
-
-  for_each(start, split, f, grainSize);
-
-  sync(workerDeque);
 }
 
 }  // namespace parallel

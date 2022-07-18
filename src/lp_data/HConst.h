@@ -2,12 +2,12 @@
 /*                                                                       */
 /*    This file is part of the HiGHS linear optimization suite           */
 /*                                                                       */
-/*    Written and engineered 2008-2021 at the University of Edinburgh    */
+/*    Written and engineered 2008-2022 at the University of Edinburgh    */
 /*                                                                       */
 /*    Available as open-source under the MIT License                     */
 /*                                                                       */
-/*    Authors: Julian Hall, Ivet Galabova, Qi Huangfu, Leona Gottwald    */
-/*    and Michael Feldmeier                                              */
+/*    Authors: Julian Hall, Ivet Galabova, Leona Gottwald and Michael    */
+/*    Feldmeier                                                          */
 /*                                                                       */
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 /**@file lp_data/HConst.h
@@ -33,7 +33,6 @@ const std::string kHighsOnString = "on";
 const HighsInt kSimplexConcurrencyLimit = 8;
 const double kRunningAverageMultiplier = 0.05;
 
-const HighsInt kHighsPrereleaseRowDualSign = -1;
 const bool kExtendInvertWhenAddingRows = false;
 
 enum SimplexScaleStrategy {
@@ -122,10 +121,22 @@ enum BasisValidity {
   kBasisValidityMax = kBasisValidityValid
 };
 
-const HighsInt kSolutionStyleRaw = 0;
-const HighsInt kSolutionStylePretty = 1;
-const HighsInt kSolutionStyleMin = kSolutionStyleRaw;
-const HighsInt kSolutionStyleMax = kSolutionStylePretty;
+enum SolutionStyle {
+  kSolutionStyleOldRaw = -1,
+  kSolutionStyleRaw = 0,
+  kSolutionStylePretty,        // 1;
+  kSolutionStyleGlpsolRaw,     // 2;
+  kSolutionStyleGlpsolPretty,  // 3;
+  kSolutionStyleMin = kSolutionStyleOldRaw,
+  kSolutionStyleMax = kSolutionStyleGlpsolPretty
+};
+
+enum GlpsolCostRowLocation {
+  kGlpsolCostRowLocationLast = -2,
+  kGlpsolCostRowLocationNone,         // -1
+  kGlpsolCostRowLocationNoneIfEmpty,  // 0
+  kGlpsolCostRowLocationMin = kGlpsolCostRowLocationLast
+};
 
 const std::string kHighsFilenameDefault = "";
 
@@ -169,7 +180,7 @@ enum class HighsModelStatus {
 };
 
 /** SCIP/CPLEX-like HiGHS basis status for columns and rows. */
-enum class HighsBasisStatus {
+enum class HighsBasisStatus : uint8_t {
   kLower =
       0,   // (slack) variable is at its lower bound [including fixed variables]
   kBasic,  // (slack) variable is basic
@@ -179,10 +190,22 @@ enum class HighsBasisStatus {
              // and postsolve
 };
 
+// Default and max allowed power-of-two matrix scale factor
+const HighsInt kDefaultAllowedMatrixPow2Scale = 20;
+const HighsInt kMaxAllowedMatrixPow2Scale = 30;
+
 // Illegal values of num/max/sum infeasibility - used to indicate that true
 // values aren't known
-const HighsInt kHighsIllegalInfeasibilityCount = -1;
 const double kHighsIllegalInfeasibilityMeasure = kHighsInf;
+const HighsInt kHighsIllegalInfeasibilityCount = -1;
+
+// Illegal values for HighsError - used to indicate that true
+// values aren't known
+const double kHighsIllegalErrorValue = kHighsInf;
+const HighsInt kHighsIllegalErrorIndex = -1;
+
+// Maximum upper bound on semi-variables
+const double kMaxSemiVariableUpper = 1e5;
 
 // Termination link in linked lists
 const HighsInt kNoLink = -1;

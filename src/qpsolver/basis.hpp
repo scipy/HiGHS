@@ -7,11 +7,12 @@
 
 #include "instance.hpp"
 #include "pricing.hpp"
+#include "qpconst.hpp"
 #include "runtime.hpp"
+#include "snippets.hpp"
 #include "util/HFactor.h"
 #include "util/HVector.h"
 #include "util/HVectorBase.h"
-#include "snippets.hpp"
 
 enum class BasisStatus {
   Default,
@@ -69,8 +70,7 @@ class Basis {
   std::vector<HighsInt> nonactiveconstraintsidx;
 
   // ids of constraints that are in the basis
-  // std::vector<HighsInt> baseindex;
-  HighsInt* baseindex;
+  std::vector<HighsInt> baseindex;
 
   std::map<int, BasisStatus> basisstatus;
 
@@ -121,10 +121,10 @@ class Basis {
   // Nullspace from now on)
   void deactivate(HighsInt conid);
 
-  void activate(Runtime& rt, HighsInt conid, BasisStatus atlower,
-                HighsInt nonactivetoremove, Pricing* pricing);
+  QpSolverStatus activate(const Settings& settings, HighsInt conid, BasisStatus atlower,
+                          HighsInt nonactivetoremove, Pricing* pricing);
 
-  void updatebasis(Runtime& rt, HighsInt newactivecon, HighsInt droppedcon,
+  void updatebasis(const Settings& settings, HighsInt newactivecon, HighsInt droppedcon,
                    Pricing* pricing);
 
   Vector btran(const Vector& rhs, bool buffer = false, HighsInt p = -1);

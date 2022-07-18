@@ -2,12 +2,12 @@
 /*                                                                       */
 /*    This file is part of the HiGHS linear optimization suite           */
 /*                                                                       */
-/*    Written and engineered 2008-2021 at the University of Edinburgh    */
+/*    Written and engineered 2008-2022 at the University of Edinburgh    */
 /*                                                                       */
 /*    Available as open-source under the MIT License                     */
 /*                                                                       */
-/*    Authors: Julian Hall, Ivet Galabova, Qi Huangfu, Leona Gottwald    */
-/*    and Michael Feldmeier                                              */
+/*    Authors: Julian Hall, Ivet Galabova, Leona Gottwald and Michael    */
+/*    Feldmeier                                                          */
 /*                                                                       */
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 /**@file lp_data/HighsSolution.h
@@ -32,6 +32,16 @@ class HighsOptions;
 
 using std::string;
 
+struct HighsError {
+  double absolute_value;
+  HighsInt absolute_index;
+  double relative_value;
+  HighsInt relative_index;
+  void print(std::string message);
+  void reset();
+  void invalidate();
+};
+
 struct HighsPrimalDualErrors {
   HighsInt num_nonzero_basic_duals;
   HighsInt num_large_nonzero_basic_duals;
@@ -41,11 +51,13 @@ struct HighsPrimalDualErrors {
   double max_off_bound_nonbasic;
   double sum_off_bound_nonbasic;
   HighsInt num_primal_residual;
-  double max_primal_residual;
   double sum_primal_residual;
   HighsInt num_dual_residual;
-  double max_dual_residual;
   double sum_dual_residual;
+  HighsError max_primal_residual;
+  HighsError max_primal_infeasibility;
+  HighsError max_dual_residual;
+  HighsError max_dual_infeasibility;
 };
 
 void getKktFailures(const HighsOptions& options, const HighsModel& model,
@@ -79,8 +91,10 @@ void getVariableKktFailures(const double primal_feasibility_tolerance,
                             const double dual_feasibility_tolerance,
                             const double lower, const double upper,
                             const double value, const double dual,
-                            HighsBasisStatus* status_pointer,
-                            double& primal_infeasibility,
+                            const HighsBasisStatus* status_pointer,
+                            const HighsVarType integrality,
+                            double& absolute_primal_infeasibility,
+                            double& relative_primal_infeasibility,
                             double& dual_infeasibility, double& value_residual);
 
 double computeObjectiveValue(const HighsLp& lp, const HighsSolution& solution);

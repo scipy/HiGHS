@@ -2,12 +2,12 @@
 /*                                                                       */
 /*    This file is part of the HiGHS linear optimization suite           */
 /*                                                                       */
-/*    Written and engineered 2008-2021 at the University of Edinburgh    */
+/*    Written and engineered 2008-2022 at the University of Edinburgh    */
 /*                                                                       */
 /*    Available as open-source under the MIT License                     */
 /*                                                                       */
-/*    Authors: Julian Hall, Ivet Galabova, Qi Huangfu, Leona Gottwald    */
-/*    and Michael Feldmeier                                              */
+/*    Authors: Julian Hall, Ivet Galabova, Leona Gottwald and Michael    */
+/*    Feldmeier                                                          */
 /*                                                                       */
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 /**@file io/FilereaderLp.cpp
@@ -31,11 +31,18 @@ FilereaderRetcode FilereaderLp::readModelFromFile(const HighsOptions& options,
   try {
     Model m = readinstance(filename);
 
+    if (!m.soss.empty()) {
+      highsLogUser(options.log_options, HighsLogType::kError,
+                   "SOS not supported by HiGHS\n");
+      return FilereaderRetcode::kParserError;
+    }
+
     // build variable index and gather variable information
     std::map<std::string, unsigned int> varindex;
 
     lp.num_col_ = m.variables.size();
     lp.num_row_ = m.constraints.size();
+    lp.row_names_.resize(m.constraints.size());
     lp.integrality_.assign(lp.num_col_, HighsVarType::kContinuous);
     HighsInt num_continuous = 0;
     for (HighsUInt i = 0; i < m.variables.size(); i++) {
@@ -58,11 +65,8 @@ FilereaderRetcode FilereaderLp::readModelFromFile(const HighsOptions& options,
     // Clear lp.integrality_ if problem is pure LP
     if (num_continuous == m.variables.size()) lp.integrality_.clear();
     // get objective
-    if (m.objective->offset) {
-      highsLogUser(options.log_options, HighsLogType::kWarning,
-                   "Ignoring m.objective->offset = %g\n", m.objective->offset);
-      lp.offset_ = 0;  // m.objective->offset;
-    }
+    lp.objective_name_ = m.objective->name;
+    lp.offset_ = m.objective->offset;
     lp.col_cost_.resize(lp.num_col_, 0.0);
     for (HighsUInt i = 0; i < m.objective->linterms.size(); i++) {
       std::shared_ptr<LinTerm> lt = m.objective->linterms[i];
@@ -81,26 +85,38 @@ FilereaderRetcode FilereaderLp::readModelFromFile(const HighsOptions& options,
       } else {
         mat[qt->var1].push_back(qt->var2);
         mat2[qt->var1].push_back(qt->coef);
-        hessian.dim_++;
       }
     }
 
+    // Determine whether there is a Hessian to set up by counting its
+    // nonzero entries
     unsigned int qnnz = 0;
-    // model_.hessian_ is initialised with start_[0] for fictitious
-    // column 0, so have to clear this before pushing back start
-    hessian.start_.clear();
-    assert((int)hessian.start_.size() == 0);
-    for (std::shared_ptr<Variable> var : m.variables) {
-      hessian.start_.push_back(qnnz);
-
-      for (unsigned int i = 0; i < mat[var].size(); i++) {
-        hessian.index_.push_back(varindex[mat[var][i]->name]);
-        hessian.value_.push_back(mat2[var][i]);
-        qnnz++;
+    for (std::shared_ptr<Variable> var : m.variables)
+      for (unsigned int i = 0; i < mat[var].size(); i++)
+        if (mat2[var][i]) qnnz++;
+    if (qnnz) {
+      hessian.dim_ = m.variables.size();
+      qnnz = 0;
+      // model_.hessian_ is initialised with start_[0] for fictitious
+      // column 0, so have to clear this before pushing back start
+      hessian.start_.clear();
+      assert((int)hessian.start_.size() == 0);
+      for (std::shared_ptr<Variable> var : m.variables) {
+        hessian.start_.push_back(qnnz);
+        for (unsigned int i = 0; i < mat[var].size(); i++) {
+          double value = mat2[var][i];
+          if (value) {
+            hessian.index_.push_back(varindex[mat[var][i]->name]);
+            hessian.value_.push_back(value);
+            qnnz++;
+          }
+        }
       }
+      hessian.start_.push_back(qnnz);
+      hessian.format_ = HessianFormat::kSquare;
+    } else {
+      assert(hessian.dim_ == 0 && hessian.start_[0] == 0);
     }
-    hessian.start_.push_back(qnnz);
-    hessian.format_ = HessianFormat::kSquare;
 
     // handle constraints
     std::map<std::shared_ptr<Variable>, std::vector<unsigned int>>
@@ -108,6 +124,7 @@ FilereaderRetcode FilereaderLp::readModelFromFile(const HighsOptions& options,
     std::map<std::shared_ptr<Variable>, std::vector<double>> consofvarmap_value;
     for (HighsUInt i = 0; i < m.constraints.size(); i++) {
       std::shared_ptr<Constraint> con = m.constraints[i];
+      lp.row_names_[i] = con->expr->name;
       for (HighsUInt j = 0; j < con->expr->linterms.size(); j++) {
         std::shared_ptr<LinTerm> lt = con->expr->linterms[j];
         if (consofvarmap_index.count(lt->var) == 0) {
@@ -122,6 +139,31 @@ FilereaderRetcode FilereaderLp::readModelFromFile(const HighsOptions& options,
       lp.row_upper_.push_back(con->upperbound);
     }
 
+    // Check for empty row names, giving them a special name if possible
+    bool highs_prefix_ok = true;
+    bool used_highs_prefix = false;
+    std::string highs_prefix = "HiGHS_R";
+    for (HighsInt iRow = 0; iRow < lp.num_row_; iRow++) {
+      // Look to see whether the name begins HiGHS_R
+      if (strncmp(lp.row_names_[iRow].c_str(), highs_prefix.c_str(), 7) == 0) {
+        printf("Name %s begins with \"HiGHS_R\"\n",
+               lp.row_names_[iRow].c_str());
+        highs_prefix_ok = false;
+      } else if (lp.row_names_[iRow] == "") {
+        // Make up a name beginning HiGHS_R
+        lp.row_names_[iRow] = highs_prefix + std::to_string(iRow);
+        used_highs_prefix = true;
+      }
+    }
+    if (used_highs_prefix && !highs_prefix_ok) {
+      // Have made up a name beginning HiGHS_R, but this occurs with
+      // other "natural" rows, so abandon the row names
+      lp.row_names_.clear();
+      highsLogUser(options.log_options, HighsLogType::kWarning,
+                   "Cannot create row name beginning \"HiGHS_R\" due to others "
+                   "with same prefix: row names cleared\n");
+    }
+
     HighsInt nz = 0;
     // lp.a_matrix_ is initialised with start_[0] for fictitious
     // column 0, so have to clear this before pushing back start
@@ -131,9 +173,12 @@ FilereaderRetcode FilereaderLp::readModelFromFile(const HighsOptions& options,
       std::shared_ptr<Variable> var = m.variables[i];
       lp.a_matrix_.start_.push_back(nz);
       for (HighsUInt j = 0; j < consofvarmap_index[var].size(); j++) {
-        lp.a_matrix_.index_.push_back(consofvarmap_index[var][j]);
-        lp.a_matrix_.value_.push_back(consofvarmap_value[var][j]);
-        nz++;
+        double value = consofvarmap_value[var][j];
+        if (value) {
+          lp.a_matrix_.index_.push_back(consofvarmap_index[var][j]);
+          lp.a_matrix_.value_.push_back(value);
+          nz++;
+        }
       }
     }
     lp.a_matrix_.start_.push_back(nz);
@@ -141,6 +186,16 @@ FilereaderRetcode FilereaderLp::readModelFromFile(const HighsOptions& options,
     lp.sense_ = m.sense == ObjectiveSense::MIN ? ObjSense::kMinimize
                                                : ObjSense::kMaximize;
   } catch (std::invalid_argument& ex) {
+    // lpassert in extern/filereaderlp/def.hpp throws
+    // std::invalid_argument whatever the error. Hence, unless
+    // something is done specially - here or elsewhere -
+    // FilereaderRetcode::kParserError will be returned.
+    //
+    // This is misleading when the file isn't found, as it's not a
+    // parser error
+    FILE* file = fopen(filename.c_str(), "r");
+    if (file == nullptr) return FilereaderRetcode::kFileNotFound;
+    fclose(file);
     return FilereaderRetcode::kParserError;
   }
   lp.ensureColwise();
@@ -184,8 +239,10 @@ HighsStatus FilereaderLp::writeModelToFile(const HighsOptions& options,
   this->writeToFileLineend(file);
   this->writeToFile(file, " obj: ");
   for (HighsInt i = 0; i < lp.num_col_; i++) {
-    this->writeToFile(file, "%+g x%" HIGHSINT_FORMAT " ", lp.col_cost_[i],
-                      (i + 1));
+    double coef = lp.col_cost_[i];
+    if (coef != 0.0) {
+      this->writeToFile(file, "%+g x%" HIGHSINT_FORMAT " ", coef, (i + 1));
+    }
   }
   if (model.isQp()) {
     this->writeToFile(file, "+ [ ");
@@ -193,9 +250,15 @@ HighsStatus FilereaderLp::writeModelToFile(const HighsOptions& options,
       for (HighsInt i = model.hessian_.start_[col];
            i < model.hessian_.start_[col + 1]; i++) {
         if (col <= model.hessian_.index_[i]) {
-          this->writeToFile(
-              file, "%+g x%" HIGHSINT_FORMAT " * x%" HIGHSINT_FORMAT " ",
-              model.hessian_.value_[i], col, model.hessian_.index_[i]);
+          double coef = model.hessian_.value_[i];
+          if (col != model.hessian_.index_[i]) {
+            coef *= 2;
+          }
+          if (coef != 0.0) {
+            this->writeToFile(
+                file, "%+g x%" HIGHSINT_FORMAT " * x%" HIGHSINT_FORMAT " ",
+                coef, col, model.hessian_.index_[i]);
+          }
         }
       }
     }

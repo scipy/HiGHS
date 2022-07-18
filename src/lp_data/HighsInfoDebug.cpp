@@ -2,12 +2,12 @@
 /*                                                                       */
 /*    This file is part of the HiGHS linear optimization suite           */
 /*                                                                       */
-/*    Written and engineered 2008-2021 at the University of Edinburgh    */
+/*    Written and engineered 2008-2022 at the University of Edinburgh    */
 /*                                                                       */
 /*    Available as open-source under the MIT License                     */
 /*                                                                       */
-/*    Authors: Julian Hall, Ivet Galabova, Qi Huangfu, Leona Gottwald    */
-/*    and Michael Feldmeier                                              */
+/*    Authors: Julian Hall, Ivet Galabova, Leona Gottwald and Michael    */
+/*    Feldmeier                                                          */
 /*                                                                       */
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 /**@file lp_data/HighsInfoDebug.cpp
@@ -132,7 +132,7 @@ HighsDebugStatus debugInfo(const HighsOptions& options, const HighsLp& lp,
 
 HighsDebugStatus debugNoInfo(const HighsInfo& info) {
   HighsInfo no_info;
-  no_info.clear();
+  no_info.invalidate();
   bool error_found = false;
   const std::vector<InfoRecord*>& info_records = info.records;
   const std::vector<InfoRecord*>& no_info_records = no_info.records;

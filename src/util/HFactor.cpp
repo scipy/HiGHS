@@ -2,12 +2,12 @@
 /*                                                                       */
 /*    This file is part of the HiGHS linear optimization suite           */
 /*                                                                       */
-/*    Written and engineered 2008-2021 at the University of Edinburgh    */
+/*    Written and engineered 2008-2022 at the University of Edinburgh    */
 /*                                                                       */
 /*    Available as open-source under the MIT License                     */
 /*                                                                       */
-/*    Authors: Julian Hall, Ivet Galabova, Qi Huangfu, Leona Gottwald    */
-/*    and Michael Feldmeier                                              */
+/*    Authors: Julian Hall, Ivet Galabova, Leona Gottwald and Michael    */
+/*    Feldmeier                                                          */
 /*                                                                       */
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 /**@file util/HFactor.cpp
@@ -36,11 +36,11 @@ using std::make_pair;
 using std::min;
 using std::pair;
 
-void solveMatrixT(const HighsInt X_Start, const HighsInt x_end,
-                  const HighsInt y_start, const HighsInt y_end,
-                  const HighsInt* t_index, const double* t_value,
-                  const double t_pivot, HighsInt* rhs_count,
-                  HighsInt* rhs_index, double* rhs_array) {
+static void solveMatrixT(const HighsInt X_Start, const HighsInt x_end,
+                         const HighsInt y_start, const HighsInt y_end,
+                         const HighsInt* t_index, const double* t_value,
+                         const double t_pivot, HighsInt* rhs_count,
+                         HighsInt* rhs_index, double* rhs_array) {
   // Collect by X
   double pivot_multiplier = 0;
   for (HighsInt k = X_Start; k < x_end; k++)
@@ -63,10 +63,11 @@ void solveMatrixT(const HighsInt X_Start, const HighsInt x_end,
   }
 }
 
-void solveHyper(const HighsInt h_size, const HighsInt* h_lookup,
-                const HighsInt* h_pivot_index, const double* h_pivot_value,
-                const HighsInt* h_start, const HighsInt* h_end,
-                const HighsInt* h_index, const double* h_value, HVector* rhs) {
+static void solveHyper(const HighsInt h_size, const HighsInt* h_lookup,
+                       const HighsInt* h_pivot_index,
+                       const double* h_pivot_value, const HighsInt* h_start,
+                       const HighsInt* h_end, const HighsInt* h_index,
+                       const double* h_value, HVector* rhs) {
   HighsInt rhs_count = rhs->count;
   HighsInt* rhs_index = &rhs->index[0];
   double* rhs_array = &rhs->array[0];
@@ -250,12 +251,12 @@ void HFactor::setupGeneral(
 
   iwork.assign(num_row + 1, 0);
   for (HighsInt i = 0; i < num_col; i++) iwork[a_start[i + 1] - a_start[i]]++;
-  for (HighsInt i = num_row, counted = 0; i >= 0 && counted < num_row; i--)
+  const HighsInt b_max_dim = max(num_row, num_basic);
+  for (HighsInt i = num_row, counted = 0; i >= 0 && counted < b_max_dim; i--)
     basis_matrix_limit_size += i * iwork[i], counted += iwork[i];
-  basis_matrix_limit_size += num_row;
+  basis_matrix_limit_size += b_max_dim;
 
   // Allocate space for basis matrix, L, U factor and Update buffer
-  const HighsInt b_max_dim = max(num_row, num_basic);
   b_var.resize(b_max_dim);
   b_start.resize(b_max_dim + 1, 0);
   b_index.resize(basis_matrix_limit_size);
@@ -334,6 +335,11 @@ void HFactor::setupGeneral(
   pf_start.reserve(kPFVectors + 1);
   pf_index.reserve(basis_matrix_limit_size * kPFEntriesMultiplier);
   pf_value.reserve(basis_matrix_limit_size * kPFEntriesMultiplier);
+
+  // Set up the local HVector for use when RHS is
+  // std::vector<double>.
+  rhs_.setup(num_row);
+  rhs_.count = -1;
 }
 
 void HFactor::setupMatrix(const HighsInt* a_start_, const HighsInt* a_index_,
@@ -444,20 +450,55 @@ HighsInt HFactor::build(HighsTimerClock* factor_timer_clock_pointer) {
 
 void HFactor::ftranCall(HVector& vector, const double expected_density,
                         HighsTimerClock* factor_timer_clock_pointer) const {
+  const bool use_indices = vector.count >= 0;
   FactorTimer factor_timer;
   factor_timer.start(FactorFtran, factor_timer_clock_pointer);
   ftranL(vector, expected_density, factor_timer_clock_pointer);
   ftranU(vector, expected_density, factor_timer_clock_pointer);
+  // Possibly find the indices in order
+  if (use_indices) vector.reIndex();
+  factor_timer.stop(FactorFtran, factor_timer_clock_pointer);
+}
+
+void HFactor::ftranCall(std::vector<double>& vector,
+                        HighsTimerClock* factor_timer_clock_pointer) {
+  FactorTimer factor_timer;
+  factor_timer.start(FactorFtran, factor_timer_clock_pointer);
+  // Only have to clear the scalars of the local HVector, since the
+  // array is moved in. Set the count to -1 to indicate that indices
+  // aren't known.
+  this->rhs_.clearScalars();
+  this->rhs_.array = std::move(vector);
+  this->rhs_.count = -1;
+  const double expected_density = 1;
+  ftranCall(this->rhs_, expected_density, factor_timer_clock_pointer);
+  vector = std::move(this->rhs_.array);
   factor_timer.stop(FactorFtran, factor_timer_clock_pointer);
 }
 
 void HFactor::btranCall(HVector& vector, const double expected_density,
                         HighsTimerClock* factor_timer_clock_pointer) const {
+  const bool use_indices = vector.count >= 0;
   FactorTimer factor_timer;
   factor_timer.start(FactorBtran, factor_timer_clock_pointer);
   btranU(vector, expected_density, factor_timer_clock_pointer);
   btranL(vector, expected_density, factor_timer_clock_pointer);
+  // Possibly find the indices in order
+  if (use_indices) vector.reIndex();
   factor_timer.stop(FactorBtran, factor_timer_clock_pointer);
+}
+
+void HFactor::btranCall(std::vector<double>& vector,
+                        HighsTimerClock* factor_timer_clock_pointer) {
+  // Only have to clear the scalars of the local HVector, since the
+  // array is moved in. Set the count to -1 to indicate that indices
+  // aren't known.
+  this->rhs_.clearScalars();
+  this->rhs_.array = std::move(vector);
+  this->rhs_.count = -1;
+  const double expected_density = 1;
+  btranCall(this->rhs_, expected_density, factor_timer_clock_pointer);
+  vector = std::move(this->rhs_.array);
 }
 
 void HFactor::update(HVector* aq, HVector* ep, HighsInt* iRow, HighsInt* hint) {
@@ -504,7 +545,7 @@ void HFactor::buildSimple() {
    */
   luClear();
 
-  const bool progress_report = num_basic != num_row;
+  const bool progress_report = false;
   const HighsInt progress_frequency = 100000;
 
   // Set all values of permute to -1 so that unpermuted (rank
@@ -517,7 +558,6 @@ void HFactor::buildSimple() {
   /**
    * 1. Prepare basis matrix and deal with unit columns
    */
-
   const bool report_unit = false;
   const bool report_singletons = false;
   const bool report_markowitz = false;
@@ -543,21 +583,25 @@ void HFactor::buildSimple() {
     HighsInt iMat = basic_index[iCol];
     HighsInt iRow = -1;
     int8_t pivot_type = kPivotIllegal;
+    // Look for unit columns as pivots. If there is already a pivot
+    // corresponding to the nonzero in a unit column - evidenced by
+    // mr_count_before[iRow] being negative - then, obviously, it
+    // can't be used. However, it doesn't imply an error, or even rank
+    // deficiency now that build() is being used to determine
+    // rank. Treat it as a column to be handled in the kernel, so that
+    // any rank deficiency or singularity is detected as late as
+    // possible.
     if (iMat >= num_col) {
-      if (report_unit) printf("Stage %d: Logical\n", (int)(l_start.size() - 1));
       // 1.1 Logical column
-      pivot_type = kPivotLogical;
+      //
       // Check for double pivot
       HighsInt lc_iRow = iMat - num_col;
       if (mr_count_before[lc_iRow] >= 0) {
+        if (report_unit)
+          printf("Stage %d: Logical\n", (int)(l_start.size() - 1));
+        pivot_type = kPivotLogical;
         iRow = lc_iRow;
       } else {
-        highsLogDev(log_options, HighsLogType::kError,
-                    "INVERT Error: Found a logical column with pivot "
-                    "already in row %" HIGHSINT_FORMAT "\n",
-                    lc_iRow);
-        // Treat this as a column to be handled in the kernel, so that
-        // the rank deficiency is detected as late as possible.
         mr_count_before[lc_iRow]++;
         b_index[BcountX] = lc_iRow;
         b_value[BcountX++] = 1.0;
@@ -567,24 +611,28 @@ void HFactor::buildSimple() {
       // 1.2 Structural column
       HighsInt start = a_start[iMat];
       HighsInt count = a_start[iMat + 1] - start;
-      HighsInt lc_iRow = a_index[start];
-      // Check for unit column with double pivot
-      bool unit_col = count == 1 && a_value[start] == 1;
-      if (unit_col && mr_count_before[lc_iRow] >= 0) {
+      // If this column and all subsequent columns are zero (so count
+      // is 0) then a_index[start] and a_value[start] are unassigned,
+      // so determine a unit column in two stages
+      bool ok_unit_col = false;
+      if (count == 1) {
+        // Column has only one nonzero, but have to make sure that the
+        // value is 1 and that there's not already a pivot
+        // corresponding to this unit column
+        ok_unit_col =
+            a_value[start] == 1 && mr_count_before[a_index[start]] >= 0;
+      }
+      if (ok_unit_col) {
         if (report_unit) printf("Stage %d: Unit\n", (int)(l_start.size() - 1));
         // Don't exploit this special case in case the matrix is
         // re-factorized after scaling has been applied, making this
         // column non-unit.
         pivot_type = kPivotColSingleton;  //;kPivotUnit;//
-        iRow = lc_iRow;
+        iRow = a_index[start];
       } else {
-        if (unit_col)
-          highsLogDev(log_options, HighsLogType::kError,
-                      "INVERT Error: Found a second unit column with pivot in "
-                      "row %" HIGHSINT_FORMAT "\n",
-                      lc_iRow);
         for (HighsInt k = start; k < start + count; k++) {
           mr_count_before[a_index[k]]++;
+          assert(BcountX < b_index.size());
           b_index[BcountX] = a_index[k];
           b_value[BcountX++] = a_value[k];
         }
@@ -599,7 +647,10 @@ void HFactor::buildSimple() {
       u_pivot_index.push_back(iRow);
       u_pivot_value.push_back(1);
       u_start.push_back(u_index.size());
-      mr_count_before[iRow] = -num_row;
+      // Was -num_row, but this is incorrect since the negation needs
+      // to be great enough so that, starting from it, the accumulated
+      // count can never reach zero
+      mr_count_before[iRow] = -num_basic;
       assert(pivot_type != kPivotIllegal);
       this->refactor_info_.pivot_row.push_back(iRow);
       this->refactor_info_.pivot_var.push_back(iMat);
@@ -806,11 +857,16 @@ HighsInt HFactor::buildKernel() {
   double fake_fill = 0;
   double fake_eliminate = 0;
 
-  const bool progress_report = num_basic != num_row;
+  const bool progress_report = false;  // num_basic != num_row;
   const HighsInt progress_frequency = 10000;
   HighsInt search_k = 0;
 
+  const HighsInt check_nwork = -11;
   while (nwork-- > 0) {
+    //    printf("\nnwork = %d\n", (int)nwork);
+    if (nwork == check_nwork) {
+      reportAsm();
+    }
     /**
      * 1. Search for the pivot
      */
@@ -849,7 +905,10 @@ HighsInt HFactor::buildKernel() {
     search_k++;
     // 1.2. Search for local singletons
     bool foundPivot = false;
+    //    jColPivot = col_link_first[1];
     if (!foundPivot && col_link_first[1] != -1) {
+      // Not yet found a pivot and there is at least one column
+      // singleton
       jColPivot = col_link_first[1];
       iRowPivot = mc_index[mc_start[jColPivot]];
       foundPivot = true;
@@ -938,34 +997,64 @@ HighsInt HFactor::buildKernel() {
     // 1.4. If we found nothing: tell singular
     if (!foundPivot) {
       rank_deficiency = nwork + 1;
+      highsLogDev(log_options, HighsLogType::kWarning,
+                  "Factorization identifies rank deficiency of %d\n",
+                  (int)rank_deficiency);
       return rank_deficiency;
     }
 
     /**
      * 2. Elimination other elements by the pivot
      */
+#ifndef NDEBUG
+    const HighsInt original_pivotal_row_count = mr_count[iRowPivot];
+    const HighsInt original_pivotal_col_count = mc_count_a[jColPivot];
+#endif
     // 2.1. Delete the pivot
+    //
+    // Remove the pivot row index from the pivotal column of the
+    // col-wise matrix. Also decreases the column count
     double pivot_multiplier = colDelete(jColPivot, iRowPivot);
+    // Remove the pivot column index from the pivotal row of the
+    // row-wise matrix. Also decreases the row count
+    rowDelete(jColPivot, iRowPivot);
+    // Remove the pivotal column from the linked list of columns
+    // containing it
+    clinkDel(jColPivot);
+    // Remove the pivotal row from the linked list of rows containing
+    // it
+    rlinkDel(iRowPivot);
     if (!singleton_pivot)
       assert(candidate_pivot_value == fabs(pivot_multiplier));
     if (fabs(pivot_multiplier) < pivot_tolerance) {
       highsLogDev(log_options, HighsLogType::kWarning,
-                  "Small |pivot| = %g when nwork = %" HIGHSINT_FORMAT "\n",
-                  fabs(pivot_multiplier), nwork);
-      rank_deficiency = nwork + 1;
-      assert((HighsInt)this->refactor_info_.pivot_row.size() +
-                 rank_deficiency ==
-             num_basic);
-      return rank_deficiency;
+                  "Defer singular pivot = %11.4g\n", pivot_multiplier);
+      // Matrix is singular, but defer return since other valid pivots
+      // may exist.
+      assert(mr_count[iRowPivot] == original_pivotal_row_count - 1);
+      if (mr_count[iRowPivot] == 0) {
+        // The pivot corresponds to a singleton row. Entry is zeroed,
+        // and do no more since there may be other valid entries in
+        // the pivotal column
+        //
+        // Add the pivotal column to the linked list of columns with
+        // its new count
+        assert(mc_count_a[jColPivot] == original_pivotal_col_count - 1);
+        clinkAdd(jColPivot, mc_count_a[jColPivot]);
+      } else {
+        // Otherwise, other entries in the pivotal column will be
+        // smaller than the pivot, so zero the column
+        zeroCol(jColPivot);
+        // Add the pivotal row to the linked list of rows with its new
+        // count
+        assert(mr_count[iRowPivot] == original_pivotal_row_count - 1);
+        rlinkAdd(iRowPivot, mr_count[iRowPivot]);
+      }
+      // No pivot found, so have to increment nwork
+      nwork++;
+      continue;
     }
-    rowDelete(jColPivot, iRowPivot);
-    clinkDel(jColPivot);
-    rlinkDel(iRowPivot);
     permute[jColPivot] = iRowPivot;
-    //    printf("Mwz pivot %3d; mc_var[%3d] = %d; basic_index[%3d] = %d\n",
-    //    (int)(num_row-nwork),
-    //	   (int)jColPivot, (int)mc_var[jColPivot],
-    //	   (int)jColPivot, (int)basic_index[jColPivot]);
     assert(mc_var[jColPivot] == basic_index[jColPivot]);
 
     this->refactor_info_.pivot_row.push_back(iRowPivot);
@@ -1365,11 +1454,38 @@ void HFactor::buildFinish() {
   }
 }
 
+void HFactor::zeroCol(const HighsInt jCol) {
+  const HighsInt a_count = mc_count_a[jCol];
+  const HighsInt a_start = mc_start[jCol];
+  const HighsInt a_end = a_start + a_count;
+  for (HighsInt iEl = a_start; iEl < a_end; iEl++) {
+    const double abs_value = std::abs(mc_value[iEl]);
+    const HighsInt iRow = mc_index[iEl];
+    const HighsInt original_row_count = mr_count[iRow];
+    // Remove the column index from this row of the row-wise
+    // matrix. Also decreases the row count
+    rowDelete(jCol, iRow);
+    // Remove this row from the linked list of rows containing it
+    rlinkDel(iRow);
+    // Add the this row to the linked list of rows with this reduced
+    // count
+    assert(mr_count[iRow] == original_row_count - 1);
+    rlinkAdd(iRow, mr_count[iRow]);
+    assert(abs_value < pivot_tolerance);
+  }
+  // Remove the column from the linked list of columns containing it
+  clinkDel(jCol);
+  // Zero the counts of the active and inactive sections of the column
+  mc_count_a[jCol] = 0;
+  mc_count_n[jCol] = 0;
+}
+
 void HFactor::ftranL(HVector& rhs, const double expected_density,
                      HighsTimerClock* factor_timer_clock_pointer) const {
   FactorTimer factor_timer;
   factor_timer.start(FactorFtranLower, factor_timer_clock_pointer);
   if (update_method == kUpdateMethodApf) {
+    assert(!(update_method == kUpdateMethodApf));
     factor_timer.start(FactorFtranLowerAPF, factor_timer_clock_pointer);
     rhs.tight();
     rhs.pack();
@@ -1378,20 +1494,22 @@ void HFactor::ftranL(HVector& rhs, const double expected_density,
     rhs.tight();
   }
 
+  // Determine style of solve
   double current_density = 1.0 * rhs.count / num_row;
-  if (current_density > kHyperCancel || expected_density > kHyperFtranL) {
+  const bool sparse_solve = rhs.count < 0 || current_density > kHyperCancel ||
+                            expected_density > kHyperFtranL;
+  if (sparse_solve) {
     factor_timer.start(FactorFtranLowerSps, factor_timer_clock_pointer);
     // Alias to RHS
-    HighsInt rhs_count = 0;
     HighsInt* rhs_index = &rhs.index[0];
     double* rhs_array = &rhs.array[0];
-
     // Alias to factor L
     const HighsInt* l_start = &this->l_start[0];
     const HighsInt* l_index =
         this->l_index.size() > 0 ? &this->l_index[0] : NULL;
     const double* l_value = this->l_value.size() > 0 ? &this->l_value[0] : NULL;
-
+    // Local accumulation of RHS count
+    HighsInt rhs_count = 0;
     // Transform
     for (HighsInt i = 0; i < num_row; i++) {
       HighsInt pivotRow = l_pivot_index[i];
@@ -1405,11 +1523,11 @@ void HFactor::ftranL(HVector& rhs, const double expected_density,
       } else
         rhs_array[pivotRow] = 0;
     }
-
     // Save the count
     rhs.count = rhs_count;
     factor_timer.stop(FactorFtranLowerSps, factor_timer_clock_pointer);
   } else {
+    // Hyper-sparse solve
     factor_timer.start(FactorFtranLowerHyper, factor_timer_clock_pointer);
     const HighsInt* l_index =
         this->l_index.size() > 0 ? &this->l_index[0] : NULL;
@@ -1425,21 +1543,24 @@ void HFactor::btranL(HVector& rhs, const double expected_density,
                      HighsTimerClock* factor_timer_clock_pointer) const {
   FactorTimer factor_timer;
   factor_timer.start(FactorBtranLower, factor_timer_clock_pointer);
-  double current_density = 1.0 * rhs.count / num_row;
-  if (current_density > kHyperCancel || expected_density > kHyperBtranL) {
-    // Alias to RHS
+
+  // Determine style of solve
+  const double current_density = 1.0 * rhs.count / num_row;
+  const bool sparse_solve = rhs.count < 0 || current_density > kHyperCancel ||
+                            expected_density > kHyperBtranL;
+  if (sparse_solve) {
     factor_timer.start(FactorBtranLowerSps, factor_timer_clock_pointer);
-    HighsInt rhs_count = 0;
+    // Alias to RHS
     HighsInt* rhs_index = &rhs.index[0];
     double* rhs_array = &rhs.array[0];
-
     // Alias to factor L
     const HighsInt* lr_start = &this->lr_start[0];
     const HighsInt* lr_index =
         this->lr_index.size() > 0 ? &this->lr_index[0] : NULL;
     const double* lr_value =
         this->lr_value.size() > 0 ? &this->lr_value[0] : NULL;
-
+    // Local accumulation of RHS count
+    HighsInt rhs_count = 0;
     // Transform
     for (HighsInt i = num_row - 1; i >= 0; i--) {
       HighsInt pivotRow = l_pivot_index[i];
@@ -1454,11 +1575,11 @@ void HFactor::btranL(HVector& rhs, const double expected_density,
       } else
         rhs_array[pivotRow] = 0;
     }
-
     // Save the count
     rhs.count = rhs_count;
     factor_timer.stop(FactorBtranLowerSps, factor_timer_clock_pointer);
   } else {
+    // Hyper-sparse solve
     factor_timer.start(FactorBtranLowerHyper, factor_timer_clock_pointer);
     const HighsInt* lr_index =
         this->lr_index.size() > 0 ? &this->lr_index[0] : NULL;
@@ -1481,18 +1602,18 @@ void HFactor::btranL(HVector& rhs, const double expected_density,
 
 void HFactor::ftranU(HVector& rhs, const double expected_density,
                      HighsTimerClock* factor_timer_clock_pointer) const {
+  assert(rhs.count >= 0);
   FactorTimer factor_timer;
   factor_timer.start(FactorFtranUpper, factor_timer_clock_pointer);
   // The update part
   if (update_method == kUpdateMethodFt) {
     factor_timer.start(FactorFtranUpperFT, factor_timer_clock_pointer);
-    //    const double current_density = 1.0 * rhs.count / num_row;
     ftranFT(rhs);
     rhs.tight();
     rhs.pack();
     factor_timer.stop(FactorFtranUpperFT, factor_timer_clock_pointer);
-  }
-  if (update_method == kUpdateMethodMpf) {
+  } else if (update_method == kUpdateMethodMpf) {
+    assert(!(update_method == kUpdateMethodMpf));
     factor_timer.start(FactorFtranUpperMPF, factor_timer_clock_pointer);
     ftranMPF(rhs);
     rhs.tight();
@@ -1501,8 +1622,12 @@ void HFactor::ftranU(HVector& rhs, const double expected_density,
   }
 
   // The regular part
+  //
+  // Determine style of solve
   const double current_density = 1.0 * rhs.count / num_row;
-  if (current_density > kHyperCancel || expected_density > kHyperFtranU) {
+  const bool sparse_solve = rhs.count < 0 || current_density > kHyperCancel ||
+                            expected_density > kHyperFtranU;
+  if (sparse_solve) {
     const bool report_ftran_upper_sparse =
         false;  // current_density < kHyperCancel;
     HighsInt use_clock;
@@ -1515,23 +1640,22 @@ void HFactor::ftranU(HVector& rhs, const double expected_density,
     factor_timer.start(use_clock, factor_timer_clock_pointer);
     // Alias to non constant
     double rhs_synthetic_tick = 0;
-    HighsInt rhs_count = 0;
+    // Alias to RHS
     HighsInt* rhs_index = &rhs.index[0];
     double* rhs_array = &rhs.array[0];
-
-    // Alias to the factor
+    // Alias to factor U
     const HighsInt* u_start = &this->u_start[0];
     const HighsInt* u_end = &this->u_last_p[0];
     const HighsInt* u_index =
         this->u_index.size() > 0 ? &this->u_index[0] : NULL;
     const double* u_value = this->u_value.size() > 0 ? &this->u_value[0] : NULL;
-
+    // Local accumulation of RHS count
+    HighsInt rhs_count = 0;
     // Transform
     HighsInt u_pivot_count = u_pivot_index.size();
     for (HighsInt i_logic = u_pivot_count - 1; i_logic >= 0; i_logic--) {
       // Skip void
       if (u_pivot_index[i_logic] == -1) continue;
-
       // Normal part
       const HighsInt pivotRow = u_pivot_index[i_logic];
       double pivot_multiplier = rhs_array[pivotRow];
@@ -1549,7 +1673,6 @@ void HFactor::ftranU(HVector& rhs, const double expected_density,
       } else
         rhs_array[pivotRow] = 0;
     }
-
     // Save the count
     rhs.count = rhs_count;
     rhs.synthetic_tick +=
@@ -1586,6 +1709,7 @@ void HFactor::ftranU(HVector& rhs, const double expected_density,
     factor_timer.stop(use_clock, factor_timer_clock_pointer);
   }
   if (update_method == kUpdateMethodPf) {
+    assert(!(update_method == kUpdateMethodPf));
     factor_timer.start(FactorFtranUpperPF, factor_timer_clock_pointer);
     ftranPF(rhs);
     rhs.tight();
@@ -1600,33 +1724,37 @@ void HFactor::btranU(HVector& rhs, const double expected_density,
   FactorTimer factor_timer;
   factor_timer.start(FactorBtranUpper, factor_timer_clock_pointer);
   if (update_method == kUpdateMethodPf) {
+    assert(!(update_method == kUpdateMethodPf));
     factor_timer.start(FactorBtranUpperPF, factor_timer_clock_pointer);
     btranPF(rhs);
     factor_timer.stop(FactorBtranUpperPF, factor_timer_clock_pointer);
   }
 
   // The regular part
-  double current_density = 1.0 * rhs.count / num_row;
-  if (current_density > kHyperCancel || expected_density > kHyperBtranU) {
+  //
+  // Determine style of solve
+  const double current_density = 1.0 * rhs.count / num_row;
+  const bool sparse_solve = rhs.count < 0 || current_density > kHyperCancel ||
+                            expected_density > kHyperBtranU;
+  if (sparse_solve) {
     factor_timer.start(FactorBtranUpperSps, factor_timer_clock_pointer);
     // Alias to non constant
     double rhs_synthetic_tick = 0;
-    HighsInt rhs_count = 0;
-    HighsInt* rhs_index = &rhs.index[0];
+    // Alias to RHS
     double* rhs_array = &rhs.array[0];
-
-    // Alias to the factor
+    HighsInt* rhs_index = &rhs.index[0];
+    // Alias to factor U
     const HighsInt* ur_start = &this->ur_start[0];
     const HighsInt* ur_end = &this->ur_lastp[0];
     const HighsInt* ur_index = &this->ur_index[0];
     const double* ur_value = &this->ur_value[0];
-
+    // Local accumulation of RHS count
+    HighsInt rhs_count = 0;
     // Transform
     HighsInt u_pivot_count = u_pivot_index.size();
     for (HighsInt i_logic = 0; i_logic < u_pivot_count; i_logic++) {
       // Skip void
       if (u_pivot_index[i_logic] == -1) continue;
-
       // Normal part
       const HighsInt pivotRow = u_pivot_index[i_logic];
       double pivot_multiplier = rhs_array[pivotRow];
@@ -1644,7 +1772,6 @@ void HFactor::btranU(HVector& rhs, const double expected_density,
       } else
         rhs_array[pivotRow] = 0;
     }
-
     // Save the count
     rhs.count = rhs_count;
     rhs.synthetic_tick +=
@@ -1659,16 +1786,17 @@ void HFactor::btranU(HVector& rhs, const double expected_density,
   }
 
   // The update part
+  assert(rhs.count >= 0);
   if (update_method == kUpdateMethodFt) {
     factor_timer.start(FactorBtranUpperFT, factor_timer_clock_pointer);
     rhs.tight();
     rhs.pack();
-    //    const double current_density = 1.0 * rhs.count / num_row;
     btranFT(rhs);
     rhs.tight();
     factor_timer.stop(FactorBtranUpperFT, factor_timer_clock_pointer);
   }
   if (update_method == kUpdateMethodMpf) {
+    assert(!(update_method == kUpdateMethodMpf));
     factor_timer.start(FactorBtranUpperMPF, factor_timer_clock_pointer);
     rhs.tight();
     rhs.pack();
@@ -1680,6 +1808,11 @@ void HFactor::btranU(HVector& rhs, const double expected_density,
 }
 
 void HFactor::ftranFT(HVector& vector) const {
+  // Alias to non constant
+  assert(vector.count >= 0);
+  HighsInt rhs_count = vector.count;
+  HighsInt* rhs_index = &vector.index[0];
+  double* rhs_array = &vector.array[0];
   // Alias to PF buffer
   const HighsInt pf_pivot_count = pf_pivot_index.size();
   HighsInt* pf_pivot_index = NULL;
@@ -1692,13 +1825,6 @@ void HFactor::ftranFT(HVector& vector) const {
       this->pf_index.size() > 0 ? &this->pf_index[0] : NULL;
   const double* pf_value =
       this->pf_value.size() > 0 ? &this->pf_value[0] : NULL;
-
-  // Alias to non constant
-  HighsInt rhs_count = vector.count;
-  HighsInt* rhs_index = &vector.index[0];
-  double* rhs_array = &vector.array[0];
-
-  // Forwardly apply row ETA
   for (HighsInt i = 0; i < pf_pivot_count; i++) {
     HighsInt iRow = pf_pivot_index[i];
     double value0 = rhs_array[iRow];
@@ -1713,7 +1839,6 @@ void HFactor::ftranFT(HVector& vector) const {
       rhs_array[iRow] = (fabs(value1) < kHighsTiny) ? kHighsZero : value1;
     }
   }
-
   // Save count back
   vector.count = rhs_count;
   vector.synthetic_tick += pf_pivot_count * 20 + pf_start[pf_pivot_count] * 5;
@@ -1723,6 +1848,11 @@ void HFactor::ftranFT(HVector& vector) const {
 }
 
 void HFactor::btranFT(HVector& vector) const {
+  // Alias to non constant
+  assert(vector.count >= 0);
+  HighsInt rhs_count = vector.count;
+  HighsInt* rhs_index = &vector.index[0];
+  double* rhs_array = &vector.array[0];
   // Alias to PF buffer
   const HighsInt pf_pivot_count = pf_pivot_index.size();
   const HighsInt* pf_pivot_index =
@@ -1733,14 +1863,8 @@ void HFactor::btranFT(HVector& vector) const {
       this->pf_index.size() > 0 ? &this->pf_index[0] : NULL;
   const double* pf_value =
       this->pf_value.size() > 0 ? &this->pf_value[0] : NULL;
-
-  // Alias to non constant
+  // Apply row ETA backward
   double rhs_synthetic_tick = 0;
-  HighsInt rhs_count = vector.count;
-  HighsInt* rhs_index = &vector.index[0];
-  double* rhs_array = &vector.array[0];
-
-  // Backwardly apply row ETA
   for (HighsInt i = pf_pivot_count - 1; i >= 0; i--) {
     HighsInt pivotRow = pf_pivot_index[i];
     double pivot_multiplier = rhs_array[pivotRow];
@@ -1757,9 +1881,7 @@ void HFactor::btranFT(HVector& vector) const {
       }
     }
   }
-
   vector.synthetic_tick += rhs_synthetic_tick * 15 + pf_pivot_count * 10;
-
   // Save count back
   vector.count = rhs_count;
 }
@@ -2354,4 +2476,96 @@ void HFactor::updateAPF(HVector* aq, HVector* ep, HighsInt iRow
 
   // Store pivot
   pf_pivot_value.push_back(aq->array[iRow]);
+}
+
+InvertibleRepresentation HFactor::getInvert() const {
+  InvertibleRepresentation invert;
+  invert.l_pivot_index = this->l_pivot_index;
+  invert.l_pivot_lookup = this->l_pivot_lookup;
+  invert.l_start = this->l_start;
+  invert.l_index = this->l_index;
+  invert.l_value = this->l_value;
+  invert.lr_start = this->lr_start;
+  invert.lr_index = this->lr_index;
+  invert.lr_value = this->lr_value;
+
+  invert.u_pivot_lookup = this->u_pivot_lookup;
+  invert.u_pivot_index = this->u_pivot_index;
+  invert.u_pivot_value = this->u_pivot_value;
+  invert.u_start = this->u_start;
+  invert.u_last_p = this->u_last_p;
+  invert.u_index = this->u_index;
+  invert.u_value = this->u_value;
+
+  invert.ur_start = this->ur_start;
+  invert.ur_lastp = this->ur_lastp;
+  invert.ur_space = this->ur_space;
+  invert.ur_index = this->ur_index;
+  invert.ur_value = this->ur_value;
+  invert.pf_start = this->pf_start;
+  invert.pf_index = this->pf_index;
+  invert.pf_value = this->pf_value;
+  invert.pf_pivot_index = this->pf_pivot_index;
+  invert.pf_pivot_value = this->pf_pivot_value;
+  return invert;
+}
+
+void HFactor::setInvert(const InvertibleRepresentation& invert) {
+  this->l_pivot_index = invert.l_pivot_index;
+  this->l_pivot_lookup = invert.l_pivot_lookup;
+  this->l_start = invert.l_start;
+  this->l_index = invert.l_index;
+  this->l_value = invert.l_value;
+  this->lr_start = invert.lr_start;
+  this->lr_index = invert.lr_index;
+  this->lr_value = invert.lr_value;
+
+  this->u_pivot_lookup = invert.u_pivot_lookup;
+  this->u_pivot_index = invert.u_pivot_index;
+  this->u_pivot_value = invert.u_pivot_value;
+  this->u_start = invert.u_start;
+  this->u_last_p = invert.u_last_p;
+  this->u_index = invert.u_index;
+  this->u_value = invert.u_value;
+
+  this->ur_start = invert.ur_start;
+  this->ur_lastp = invert.ur_lastp;
+  this->ur_space = invert.ur_space;
+  this->ur_index = invert.ur_index;
+  this->ur_value = invert.ur_value;
+  this->pf_start = invert.pf_start;
+  this->pf_index = invert.pf_index;
+  this->pf_value = invert.pf_value;
+  this->pf_pivot_index = invert.pf_pivot_index;
+  this->pf_pivot_value = invert.pf_pivot_value;
+}
+
+void InvertibleRepresentation::clear() {
+  this->l_pivot_index.clear();
+  this->l_pivot_lookup.clear();
+  this->l_start.clear();
+  this->l_index.clear();
+  this->l_value.clear();
+  this->lr_start.clear();
+  this->lr_index.clear();
+  this->lr_value.clear();
+
+  this->u_pivot_lookup.clear();
+  this->u_pivot_index.clear();
+  this->u_pivot_value.clear();
+  this->u_start.clear();
+  this->u_last_p.clear();
+  this->u_index.clear();
+  this->u_value.clear();
+
+  this->ur_start.clear();
+  this->ur_lastp.clear();
+  this->ur_space.clear();
+  this->ur_index.clear();
+  this->ur_value.clear();
+  this->pf_start.clear();
+  this->pf_index.clear();
+  this->pf_value.clear();
+  this->pf_pivot_index.clear();
+  this->pf_pivot_value.clear();
 }

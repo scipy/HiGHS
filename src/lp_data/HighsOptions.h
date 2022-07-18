@@ -2,12 +2,12 @@
 /*                                                                       */
 /*    This file is part of the HiGHS linear optimization suite           */
 /*                                                                       */
-/*    Written and engineered 2008-2021 at the University of Edinburgh    */
+/*    Written and engineered 2008-2022 at the University of Edinburgh    */
 /*                                                                       */
 /*    Available as open-source under the MIT License                     */
 /*                                                                       */
-/*    Authors: Julian Hall, Ivet Galabova, Qi Huangfu, Leona Gottwald    */
-/*    and Michael Feldmeier                                              */
+/*    Authors: Julian Hall, Ivet Galabova, Leona Gottwald and Michael    */
+/*    Feldmeier                                                          */
 /*                                                                       */
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 /**@file lp_data/HighsOptions.h
@@ -137,7 +137,7 @@ bool commandLineOffChooseOnOk(const HighsLogOptions& report_log_options,
 bool commandLineSolverOk(const HighsLogOptions& report_log_options,
                          const string& value);
 
-bool boolFromString(const std::string value, bool& bool_value);
+bool boolFromString(std::string value, bool& bool_value);
 
 OptionStatus getOptionIndex(const HighsLogOptions& report_log_options,
                             const std::string& name,
@@ -152,13 +152,13 @@ OptionStatus checkOption(const HighsLogOptions& report_log_options,
                          const OptionRecordDouble& option);
 
 OptionStatus checkOptionValue(const HighsLogOptions& report_log_options,
-                              std::vector<OptionRecord*>& option_records,
+                              OptionRecordInt& option_records,
                               const HighsInt value);
 OptionStatus checkOptionValue(const HighsLogOptions& report_log_options,
-                              std::vector<OptionRecord*>& option_records,
+                              OptionRecordDouble& option_records,
                               const double value);
 OptionStatus checkOptionValue(const HighsLogOptions& report_log_options,
-                              std::vector<OptionRecord*>& option_records,
+                              OptionRecordString& option_records,
                               const std::string value);
 
 OptionStatus setLocalOptionValue(const HighsLogOptions& report_log_options,
@@ -259,6 +259,7 @@ const string kOptionsFileString = "options_file";
 const string kRandomSeedString = "random_seed";
 const string kSolutionFileString = "solution_file";
 const string kRangingString = "ranging";
+const string kWriteModelFileString = "write_model_file";
 
 // String for HiGHS log file option
 const string kLogFileString = "log_file";
@@ -295,10 +296,13 @@ struct HighsOptionsStruct {
   HighsInt simplex_min_concurrency;
   HighsInt simplex_max_concurrency;
   HighsInt ipm_iteration_limit;
+  std::string write_model_file;
   std::string solution_file;
   std::string log_file;
+  bool write_model_to_file;
   bool write_solution_to_file;
   HighsInt write_solution_style;
+  HighsInt glpsol_cost_row_location;
   // Control of HiGHS log
   bool output_flag;
   bool log_to_console;
@@ -325,6 +329,7 @@ struct HighsOptionsStruct {
   bool no_unnecessary_rebuild_refactor;
   double simplex_initial_condition_tolerance;
   double rebuild_refactor_solution_error_tolerance;
+  double dual_steepest_edge_weight_error_tolerance;
   double dual_steepest_edge_weight_log_error_threshold;
   double dual_simplex_cost_perturbation_multiplier;
   double primal_simplex_bound_perturbation_multiplier;
@@ -337,26 +342,37 @@ struct HighsOptionsStruct {
   bool less_infeasible_DSE_choose_row;
   bool use_original_HFactor_logic;
 
+  // Options for iCrash
+  bool icrash;
+  bool icrash_dualize;
+  std::string icrash_strategy;
+  double icrash_starting_weight;
+  HighsInt icrash_iterations;
+  HighsInt icrash_approx_iter;
+  bool icrash_exact;
+  bool icrash_breakpoints;
+
   // Options for MIP solver
   bool mip_detect_symmetry;
   HighsInt mip_max_nodes;
   HighsInt mip_max_stall_nodes;
   HighsInt mip_max_leaves;
+  HighsInt mip_max_improving_sols;
   HighsInt mip_lp_age_limit;
   HighsInt mip_pool_age_limit;
   HighsInt mip_pool_soft_limit;
   HighsInt mip_pscost_minreliable;
+  HighsInt mip_min_cliquetable_entries_for_parallelism;
   HighsInt mip_report_level;
   double mip_feasibility_tolerance;
+  double mip_rel_gap;
+  double mip_abs_gap;
   double mip_heuristic_effort;
 #ifdef HIGHS_DEBUGSOL
   std::string mip_debug_solution_file;
 #endif
 
   // Logging callback identifiers
-  void (*printmsgcb)(HighsInt level, const char* msg, void* msgcb_data) = NULL;
-  void (*logmsgcb)(HighsLogType type, const char* msg, void* msgcb_data) = NULL;
-  void* msgcb_data = NULL;
   HighsLogOptions log_options;
   virtual ~HighsOptionsStruct() {}
 };
@@ -435,8 +451,8 @@ class HighsOptions : public HighsOptionsStruct {
     records.push_back(record_string);
 
     record_double =
-        new OptionRecordDouble(kTimeLimitString, "Time limit", advanced,
-                               &time_limit, 0, kHighsInf, kHighsInf);
+        new OptionRecordDouble(kTimeLimitString, "Time limit (seconds)",
+                               advanced, &time_limit, 0, kHighsInf, kHighsInf);
     records.push_back(record_double);
 
     record_string =
@@ -522,10 +538,12 @@ class HighsOptions : public HighsOptionsStruct {
         kHighsAnalysisLevelMax);
     records.push_back(record_int);
 
-    record_int =
-        new OptionRecordInt("simplex_strategy", "Strategy for simplex solver",
-                            advanced, &simplex_strategy, kSimplexStrategyMin,
-                            kSimplexStrategyDual, kSimplexStrategyMax);
+    record_int = new OptionRecordInt(
+        "simplex_strategy",
+        "Strategy for simplex solver 0 => Choose; 1 => Dual (serial); 2 => "
+        "Dual (PAMI); 3 => Dual (SIP); 4 => Primal",
+        advanced, &simplex_strategy, kSimplexStrategyMin, kSimplexStrategyDual,
+        kSimplexStrategyMax);
     records.push_back(record_int);
 
     record_int = new OptionRecordInt(
@@ -549,18 +567,18 @@ class HighsOptions : public HighsOptionsStruct {
         "Dantzig / Devex / Steepest "
         "Edge (-1/0/1/2)",
         advanced, &simplex_dual_edge_weight_strategy,
-        kSimplexDualEdgeWeightStrategyMin, kSimplexDualEdgeWeightStrategyChoose,
-        kSimplexDualEdgeWeightStrategyMax);
+        kSimplexEdgeWeightStrategyMin, kSimplexEdgeWeightStrategyChoose,
+        kSimplexEdgeWeightStrategyMax);
     records.push_back(record_int);
 
-    record_int =
-        new OptionRecordInt("simplex_primal_edge_weight_strategy",
-                            "Strategy for simplex primal edge weights: Choose "
-                            "/ Dantzig / Devex (-1/0/1)",
-                            advanced, &simplex_primal_edge_weight_strategy,
-                            kSimplexPrimalEdgeWeightStrategyMin,
-                            kSimplexPrimalEdgeWeightStrategyChoose,
-                            kSimplexPrimalEdgeWeightStrategyMax);
+    record_int = new OptionRecordInt(
+        "simplex_primal_edge_weight_strategy",
+        "Strategy for simplex primal edge weights: Choose "
+        "/ Dantzig / Devex / Steepest "
+        "Edge (-1/0/1/2)",
+        advanced, &simplex_primal_edge_weight_strategy,
+        kSimplexEdgeWeightStrategyMin, kSimplexEdgeWeightStrategyChoose,
+        kSimplexEdgeWeightStrategyMax);
     records.push_back(record_int);
 
     record_int = new OptionRecordInt(
@@ -619,11 +637,71 @@ class HighsOptions : public HighsOptionsStruct {
 
     record_int =
         new OptionRecordInt("write_solution_style",
-                            "Write the solution in style: 0=>Raw "
-                            "(computer-readable); 1=>Pretty (human-readable) ",
+                            "Style of solution file Raw (computer-readable); "
+                            "Pretty (human-readable): "
+                            "0 => HiGHS raw; 1 => HiGHS pretty; 2 => Glpsol "
+                            "raw; 3 => Glpsol pretty; ",
                             advanced, &write_solution_style, kSolutionStyleMin,
                             kSolutionStyleRaw, kSolutionStyleMax);
     records.push_back(record_int);
+
+    record_int = new OptionRecordInt(
+        "glpsol_cost_row_location",
+        "Location of cost row for Glpsol file: "
+        "-2 => Last; -1 => None; 0 => None if empty, otherwise data file "
+        "location; 1 <= n <= num_row => Location n; n > "
+        "num_row => Last",
+        advanced, &glpsol_cost_row_location, kGlpsolCostRowLocationMin, 0,
+        kHighsIInf);
+    records.push_back(record_int);
+
+    record_bool =
+        new OptionRecordBool("icrash", "Run iCrash", advanced, &icrash, false);
+    records.push_back(record_bool);
+
+    record_bool =
+        new OptionRecordBool("icrash_dualize", "Dualise strategy for iCrash",
+                             advanced, &icrash_dualize, false);
+    records.push_back(record_bool);
+
+    record_string =
+        new OptionRecordString("icrash_strategy", "Strategy for iCrash",
+                               advanced, &icrash_strategy, "ICA");
+    records.push_back(record_string);
+
+    record_double = new OptionRecordDouble(
+        "icrash_starting_weight", "iCrash starting weight", advanced,
+        &icrash_starting_weight, 1e-10, 1e-3, 1e50);
+    records.push_back(record_double);
+
+    record_int = new OptionRecordInt("icrash_iterations", "iCrash iterations",
+                                     advanced, &icrash_iterations, 0, 30, 200);
+    records.push_back(record_int);
+
+    record_int = new OptionRecordInt(
+        "icrash_approx_iter", "iCrash approximate minimization iterations",
+        advanced, &icrash_approx_iter, 0, 50, 100);
+    records.push_back(record_int);
+
+    record_bool = new OptionRecordBool("icrash_exact",
+                                       "Exact subproblem solution for iCrash",
+                                       advanced, &icrash_exact, false);
+    records.push_back(record_bool);
+
+    record_bool = new OptionRecordBool("icrash_breakpoints",
+                                       "Exact subproblem solution for iCrash",
+                                       advanced, &icrash_breakpoints, false);
+    records.push_back(record_bool);
+
+    record_string = new OptionRecordString(
+        kWriteModelFileString, "Write model file", advanced, &write_model_file,
+        kHighsFilenameDefault);
+    records.push_back(record_string);
+
+    record_bool =
+        new OptionRecordBool("write_model_to_file", "Write the model to a file",
+                             advanced, &write_model_to_file, false);
+    records.push_back(record_bool);
 
     record_bool = new OptionRecordBool("mip_detect_symmetry",
                                        "Whether symmetry should be detected",
@@ -653,6 +731,13 @@ class HighsOptions : public HighsOptionsStruct {
         &mip_max_leaves, 0, kHighsIInf, kHighsIInf);
     records.push_back(record_int);
 
+    record_int = new OptionRecordInt(
+        "mip_max_improving_sols",
+        "limit on the number of improving solutions found to stop the MIP "
+        "solver prematurely",
+        advanced, &mip_max_improving_sols, 1, kHighsIInf, kHighsIInf);
+    records.push_back(record_int);
+
     record_int = new OptionRecordInt("mip_lp_age_limit",
                                      "maximal age of dynamic LP rows before "
                                      "they are removed from the LP relaxation",
@@ -680,6 +765,14 @@ class HighsOptions : public HighsOptionsStruct {
                                      kHighsIInf);
     records.push_back(record_int);
 
+    record_int = new OptionRecordInt(
+        "mip_min_cliquetable_entries_for_parallelism",
+        "minimal number of entries in the cliquetable before neighborhood "
+        "queries of the conflict graph use parallel processing",
+        advanced, &mip_min_cliquetable_entries_for_parallelism, 0, 100000,
+        kHighsIInf);
+    records.push_back(record_int);
+
     record_int =
         new OptionRecordInt("mip_report_level", "MIP solver reporting level",
                             advanced, &mip_report_level, 0, 1, 2);
@@ -693,6 +786,20 @@ class HighsOptions : public HighsOptionsStruct {
     record_double = new OptionRecordDouble(
         "mip_heuristic_effort", "effort spent for MIP heuristics", advanced,
         &mip_heuristic_effort, 0.0, 0.05, 1.0);
+    records.push_back(record_double);
+
+    record_double = new OptionRecordDouble(
+        "mip_rel_gap",
+        "tolerance on relative gap, |ub-lb|/|ub|, to determine whether "
+        "optimality has been reached for a MIP instance",
+        advanced, &mip_rel_gap, 0.0, 1e-4, kHighsInf);
+    records.push_back(record_double);
+
+    record_double = new OptionRecordDouble(
+        "mip_abs_gap",
+        "tolerance on absolute gap of MIP, |ub-lb|, to determine whether "
+        "optimality has been reached for a MIP instance",
+        advanced, &mip_abs_gap, 0.0, 1e-6, kHighsInf);
     records.push_back(record_double);
 
     // Advanced options
@@ -747,11 +854,12 @@ class HighsOptions : public HighsOptionsStruct {
                             advanced, &cost_scale_factor, -20, 0, 20);
     records.push_back(record_int);
 
-    record_int =
-        new OptionRecordInt("allowed_matrix_scale_factor",
-                            "Largest power-of-two factor permitted when "
-                            "scaling the constraint matrix",
-                            advanced, &allowed_matrix_scale_factor, 0, 10, 20);
+    record_int = new OptionRecordInt(
+        "allowed_matrix_scale_factor",
+        "Largest power-of-two factor permitted when "
+        "scaling the constraint matrix",
+        advanced, &allowed_matrix_scale_factor, 0,
+        kDefaultAllowedMatrixPow2Scale, kMaxAllowedMatrixPow2Scale);
     records.push_back(record_int);
 
     record_int = new OptionRecordInt(
@@ -825,6 +933,12 @@ class HighsOptions : public HighsOptionsStruct {
     records.push_back(record_double);
 
     record_double = new OptionRecordDouble(
+        "dual_steepest_edge_weight_error_tolerance",
+        "Tolerance on dual steepest edge weight errors", advanced,
+        &dual_steepest_edge_weight_error_tolerance, 0.0, kHighsInf, kHighsInf);
+    records.push_back(record_double);
+
+    record_double = new OptionRecordDouble(
         "dual_steepest_edge_weight_log_error_threshold",
         "Threshold on dual steepest edge weight errors for Devex switch",
         advanced, &dual_steepest_edge_weight_log_error_threshold, 1.0, 1e1,
@@ -858,10 +972,10 @@ class HighsOptions : public HighsOptionsStruct {
         kMaxPivotThreshold);
     records.push_back(record_double);
 
-    record_int = new OptionRecordInt("presolve_substitution_maxfillin",
-                                     "Strategy for CHUZC sort in dual simplex",
-                                     advanced, &presolve_substitution_maxfillin,
-                                     0, 10, kHighsIInf);
+    record_int = new OptionRecordInt(
+        "presolve_substitution_maxfillin",
+        "Maximal fillin allowed for substitutions in presolve", advanced,
+        &presolve_substitution_maxfillin, 0, 10, kHighsIInf);
     records.push_back(record_int);
 
     record_double = new OptionRecordDouble(
@@ -904,6 +1018,8 @@ class HighsOptions : public HighsOptionsStruct {
     log_options.output_flag = &output_flag;
     log_options.log_to_console = &log_to_console;
     log_options.log_dev_level = &log_dev_level;
+    log_options.log_callback = nullptr;
+    log_options.log_callback_data = nullptr;
   }
 
   void deleteRecords() {

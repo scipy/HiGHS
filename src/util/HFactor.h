@@ -2,12 +2,12 @@
 /*                                                                       */
 /*    This file is part of the HiGHS linear optimization suite           */
 /*                                                                       */
-/*    Written and engineered 2008-2021 at the University of Edinburgh    */
+/*    Written and engineered 2008-2022 at the University of Edinburgh    */
 /*                                                                       */
 /*    Available as open-source under the MIT License                     */
 /*                                                                       */
-/*    Authors: Julian Hall, Ivet Galabova, Qi Huangfu, Leona Gottwald    */
-/*    and Michael Feldmeier                                              */
+/*    Authors: Julian Hall, Ivet Galabova, Leona Gottwald and Michael    */
+/*    Feldmeier                                                          */
 /*                                                                       */
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 /**@file util/HFactor.h
@@ -21,7 +21,6 @@
 #include <memory>
 #include <vector>
 
-//#include "HConfig.h"
 #include "io/HighsIO.h"
 #include "lp_data/HConst.h"
 #include "lp_data/HighsAnalysis.h"
@@ -32,6 +31,41 @@
 using std::max;
 // using std::min;
 using std::vector;
+
+struct InvertibleRepresentation {
+  // Factor L
+  std::vector<HighsInt> l_pivot_index;
+  std::vector<HighsInt> l_pivot_lookup;
+  std::vector<HighsInt> l_start;
+  std::vector<HighsInt> l_index;
+  std::vector<double> l_value;
+  std::vector<HighsInt> lr_start;
+  std::vector<HighsInt> lr_index;
+  std::vector<double> lr_value;
+
+  // Factor U
+  std::vector<HighsInt> u_pivot_lookup;
+  std::vector<HighsInt> u_pivot_index;
+  std::vector<double> u_pivot_value;
+
+  //  HighsInt u_total_x;
+  std::vector<HighsInt> u_start;
+  std::vector<HighsInt> u_last_p;
+  std::vector<HighsInt> u_index;
+  std::vector<double> u_value;
+
+  std::vector<HighsInt> ur_start;
+  std::vector<HighsInt> ur_lastp;
+  std::vector<HighsInt> ur_space;
+  std::vector<HighsInt> ur_index;
+  std::vector<double> ur_value;
+  std::vector<HighsInt> pf_start;
+  std::vector<HighsInt> pf_index;
+  std::vector<double> pf_value;
+  std::vector<HighsInt> pf_pivot_index;
+  std::vector<double> pf_pivot_value;
+  void clear();
+};
 
 /**
  * @brief Basis matrix factorization, update and solves for HiGHS
@@ -111,13 +145,13 @@ class HFactor {
              const HighsInt update_method = kUpdateMethodFt);
 
   void setupGeneral(
-      const HighsInt num_col,  //!< Number of columns
-      const HighsInt num_row,  //!< Number of rows
-      const HighsInt num_basic,
-      const HighsInt* a_start,  //!< Column starts of constraint matrix
-      const HighsInt* a_index,  //!< Row indices of constraint matrix
-      const double* a_value,    //!< Row values of constraint matrix
-      HighsInt* basic_index,    //!< Indices of basic variables
+      const HighsInt num_col,    //!< Number of columns
+      const HighsInt num_row,    //!< Number of rows
+      const HighsInt num_basic,  //!< Number of indices in basic_index
+      const HighsInt* a_start,   //!< Column starts of constraint matrix
+      const HighsInt* a_index,   //!< Row indices of constraint matrix
+      const double* a_value,     //!< Row values of constraint matrix
+      HighsInt* basic_index,     //!< Indices of "basic" variables
       const double pivot_threshold =
           kDefaultPivotThreshold,  //!< Pivoting threshold
       const double pivot_tolerance =
@@ -149,6 +183,9 @@ class HFactor {
       const double expected_density,  //!< Expected density of the result
       HighsTimerClock* factor_timer_clock_pointer = NULL) const;
 
+  void ftranCall(std::vector<double>& vector,
+                 HighsTimerClock* factor_timer_clock_pointer = NULL);
+
   /**
    * @brief Solve \f$B^T\mathbf{x}=\mathbf{b}\f$ (BTRAN)
    */
@@ -156,6 +193,9 @@ class HFactor {
       HVector& vector,                //!< RHS vector \f$\mathbf{b}\f$
       const double expected_density,  //!< Expected density of the result
       HighsTimerClock* factor_timer_clock_pointer = NULL) const;
+
+  void btranCall(std::vector<double>& vector,
+                 HighsTimerClock* factor_timer_clock_pointer = NULL);
 
   /**
    * @brief Update according to
@@ -250,6 +290,14 @@ class HFactor {
 
   void reportLu(const HighsInt l_u_or_both = kReportLuBoth,
                 const bool full = true) const;
+  void reportAsm();
+
+  InvertibleRepresentation getInvert() const;
+  void setInvert(const InvertibleRepresentation& invert);
+
+  void setDebugReport(const bool debug_report) {
+    this->debug_report_ = debug_report;
+  }
 
   // Information required to perform refactorization of the current
   // basis
@@ -290,6 +338,7 @@ class HFactor {
   HighsLogOptions log_options;
 
   bool use_original_HFactor_logic;
+  bool debug_report_ = false;
   HighsInt basis_matrix_limit_size;
   HighsInt update_method;
 
@@ -354,8 +403,8 @@ class HFactor {
   vector<HighsInt> u_pivot_index;
   vector<double> u_pivot_value;
 
-  HighsInt u_merit_x;
-  HighsInt u_total_x;
+  HighsInt u_merit_x;  // Only in PF and MPF
+  HighsInt u_total_x;  // Only in PF and MPF
   vector<HighsInt> u_start;
   vector<HighsInt> u_last_p;
   vector<HighsInt> u_index;
@@ -373,6 +422,8 @@ class HFactor {
   vector<HighsInt> pf_index;
   vector<double> pf_value;
 
+  HVector rhs_;
+
   // Implementation
   void buildSimple();
   //    void buildKernel();
@@ -381,7 +432,7 @@ class HFactor {
   void buildReportRankDeficiency();
   void buildMarkSingC();
   void buildFinish();
-
+  void zeroCol(const HighsInt iCol);
   void luClear();
   // Rebuild using refactor information
   HighsInt rebuild(HighsTimerClock* factor_timer_clock_pointer);

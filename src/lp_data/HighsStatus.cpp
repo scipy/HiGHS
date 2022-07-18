@@ -2,19 +2,19 @@
 /*                                                                       */
 /*    This file is part of the HiGHS linear optimization suite           */
 /*                                                                       */
-/*    Written and engineered 2008-2021 at the University of Edinburgh    */
+/*    Written and engineered 2008-2022 at the University of Edinburgh    */
 /*                                                                       */
 /*    Available as open-source under the MIT License                     */
 /*                                                                       */
-/*    Authors: Julian Hall, Ivet Galabova, Qi Huangfu, Leona Gottwald    */
-/*    and Michael Feldmeier                                              */
+/*    Authors: Julian Hall, Ivet Galabova, Leona Gottwald and Michael    */
+/*    Feldmeier                                                          */
 /*                                                                       */
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 #include "lp_data/HighsStatus.h"
 
 #include <cassert>
 
-std::string HighsStatusToString(HighsStatus status) {
+std::string highsStatusToString(HighsStatus status) {
   switch (status) {
     case HighsStatus::kOk:
       return "OK";
@@ -37,7 +37,7 @@ HighsStatus interpretCallStatus(const HighsLogOptions log_options,
   if (call_status != HighsStatus::kOk)
     highsLogDev(log_options, HighsLogType::kWarning,
                 "%s return of HighsStatus::%s\n", message.c_str(),
-                HighsStatusToString(call_status).c_str());
+                highsStatusToString(call_status).c_str());
   return to_return_status;
 }
 

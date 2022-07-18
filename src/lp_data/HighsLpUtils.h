@@ -2,12 +2,12 @@
 /*                                                                       */
 /*    This file is part of the HiGHS linear optimization suite           */
 /*                                                                       */
-/*    Written and engineered 2008-2021 at the University of Edinburgh    */
+/*    Written and engineered 2008-2022 at the University of Edinburgh    */
 /*                                                                       */
 /*    Available as open-source under the MIT License                     */
 /*                                                                       */
-/*    Authors: Julian Hall, Ivet Galabova, Qi Huangfu, Leona Gottwald    */
-/*    and Michael Feldmeier                                              */
+/*    Authors: Julian Hall, Ivet Galabova, Leona Gottwald and Michael    */
+/*    Feldmeier                                                          */
 /*                                                                       */
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 /**@file lp_data/HighsLpUtils.h
@@ -42,6 +42,9 @@ HighsStatus readBasisStream(const HighsLogOptions& log_options,
 // Methods taking HighsLp as an argument
 HighsStatus assessLp(HighsLp& lp, const HighsOptions& options);
 
+bool lpDimensionsOk(std::string message, const HighsLp& lp,
+                    const HighsLogOptions& log_options);
+
 HighsStatus assessCosts(const HighsOptions& options, const HighsInt ml_col_os,
                         const HighsIndexCollection& index_collection,
                         vector<double>& cost, const double infinite_cost);
@@ -55,6 +58,9 @@ HighsStatus assessBounds(const HighsOptions& options, const char* type,
 HighsStatus cleanBounds(const HighsOptions& options, HighsLp& lp);
 
 HighsStatus assessIntegrality(HighsLp& lp, const HighsOptions& options);
+bool activeModifiedUpperBounds(const HighsOptions& options, const HighsLp& lp,
+                               const std::vector<double> col_value);
+
 bool considerScaling(const HighsOptions& options, HighsLp& lp);
 void scaleLp(const HighsOptions& options, HighsLp& lp);
 bool equilibrationScaleMatrix(const HighsOptions& options, HighsLp& lp,
@@ -91,7 +97,8 @@ void deleteScale(vector<double>& scale,
                  const HighsIndexCollection& index_collection);
 
 void changeLpMatrixCoefficient(HighsLp& lp, const HighsInt row,
-                               const HighsInt col, const double new_value);
+                               const HighsInt col, const double new_value,
+                               const bool zero_new_value);
 
 void changeLpIntegrality(HighsLp& lp,
                          const HighsIndexCollection& index_collection,
@@ -189,11 +196,6 @@ void getLpMatrixCoefficient(const HighsLp& lp, const HighsInt row,
 // Analyse the data in an LP problem
 void analyseLp(const HighsLogOptions& log_options, const HighsLp& lp);
 
-void writeSolutionFile(FILE* file, const HighsLp& lp, const HighsBasis& basis,
-                       const HighsSolution& solution, const HighsInfo& info,
-                       const HighsModelStatus model_status,
-                       const HighsInt style);
-
 HighsStatus readSolutionFile(const std::string filename,
                              const HighsOptions& options, const HighsLp& lp,
                              HighsBasis& basis, HighsSolution& solution,
@@ -203,6 +205,7 @@ void checkLpSolutionFeasibility(const HighsOptions& options, const HighsLp& lp,
                                 const HighsSolution& solution);
 
 HighsStatus calculateRowValues(const HighsLp& lp, HighsSolution& solution);
+HighsStatus calculateRowValuesQuad(const HighsLp& lp, HighsSolution& solution);
 HighsStatus calculateColDuals(const HighsLp& lp, HighsSolution& solution);
 
 bool isBoundInfeasible(const HighsLogOptions& log_options, const HighsLp& lp);
@@ -226,7 +229,9 @@ void reportPresolveReductions(const HighsLogOptions& log_options,
 bool isLessInfeasibleDSECandidate(const HighsLogOptions& log_options,
                                   const HighsLp& lp);
 
-HighsLp withoutSemiVariables(const HighsLp& lp);
+HighsLp withoutSemiVariables(const HighsLp& lp, HighsSolution& solution,
+                             const double primal_feasibility_tolerance);
 
 void removeRowsOfCountOne(const HighsLogOptions& log_options, HighsLp& lp);
+
 #endif  // LP_DATA_HIGHSLPUTILS_H_

@@ -2,12 +2,12 @@
 /*                                                                       */
 /*    This file is part of the HiGHS linear optimization suite           */
 /*                                                                       */
-/*    Written and engineered 2008-2021 at the University of Edinburgh    */
+/*    Written and engineered 2008-2022 at the University of Edinburgh    */
 /*                                                                       */
 /*    Available as open-source under the MIT License                     */
 /*                                                                       */
-/*    Authors: Julian Hall, Ivet Galabova, Qi Huangfu, Leona Gottwald    */
-/*    and Michael Feldmeier                                              */
+/*    Authors: Julian Hall, Ivet Galabova, Leona Gottwald and Michael    */
+/*    Feldmeier                                                          */
 /*                                                                       */
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 /**@file simplex/HighsLpSolverObject.h
@@ -41,8 +41,7 @@ class HighsLpSolverObject {
   HighsOptions& options_;
   HighsTimer& timer_;
 
-  HighsModelStatus unscaled_model_status_ = HighsModelStatus::kNotset;
-  HighsModelStatus scaled_model_status_ = HighsModelStatus::kNotset;
+  HighsModelStatus model_status_ = HighsModelStatus::kNotset;
 };
 
 #endif  // LP_DATA_HIGHS_LP_SOLVER_OBJECT_H_

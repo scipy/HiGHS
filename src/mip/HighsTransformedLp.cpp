@@ -2,12 +2,12 @@
 /*                                                                       */
 /*    This file is part of the HiGHS linear optimization suite           */
 /*                                                                       */
-/*    Written and engineered 2008-2021 at the University of Edinburgh    */
+/*    Written and engineered 2008-2022 at the University of Edinburgh    */
 /*                                                                       */
 /*    Available as open-source under the MIT License                     */
 /*                                                                       */
-/*    Authors: Julian Hall, Ivet Galabova, Qi Huangfu, Leona Gottwald    */
-/*    and Michael Feldmeier                                              */
+/*    Authors: Julian Hall, Ivet Galabova, Leona Gottwald and Michael    */
+/*    Feldmeier                                                          */
 /*                                                                       */
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
@@ -135,13 +135,13 @@ HighsTransformedLp::HighsTransformedLp(const HighsLpRelaxation& lprelaxation,
         simpleUbDist[col] = 0.0;
 
       double minbestub = bestub;
-      size_t bestvubnodes = 0;
+      int64_t bestvubnodes = 0;
 
       simpleLbDist[col] = lpSolution.col_value[col] - bestlb;
       if (simpleLbDist[col] <= mipsolver.mipdata_->feastol)
         simpleLbDist[col] = 0.0;
       double maxbestlb = bestlb;
-      size_t bestvlbnodes = 0;
+      int64_t bestvlbnodes = 0;
 
       for (const auto& vub : implications.getVUBs(col)) {
         if (vub.second.coef == kHighsInf) continue;
@@ -152,7 +152,7 @@ HighsTransformedLp::HighsTransformedLp(const HighsLpRelaxation& lprelaxation,
 
         assert(vub.first >= 0 && vub.first < mipsolver.numCol());
         if (vubval <= lpSolution.col_value[col] + mipsolver.mipdata_->feastol) {
-          size_t vubnodes =
+          int64_t vubnodes =
               vub.second.coef > 0
                   ? mipsolver.mipdata_->nodequeue.numNodesDown(vub.first)
                   : mipsolver.mipdata_->nodequeue.numNodesUp(vub.first);
@@ -553,7 +553,7 @@ bool HighsTransformedLp::untransform(std::vector<double>& vals,
 
     auto IsZero = [&](HighsInt col, double val) {
       assert(col < mip.numCol());
-      return std::round(val) == 0.0;
+      return fabs(val) < 0.5;
     };
 
     vectorsum.cleanup(IsZero);

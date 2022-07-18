@@ -10,16 +10,15 @@
 /*    and Michael Feldmeier                                              */
 /*                                                                       */
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
-/**@file ipm/IpxWrapperEmpty.h
- * @brief
- */
-#ifndef IPM_IPX_WRAPPER_EMPTY_H_
-#define IPM_IPX_WRAPPER_EMPTY_H_
+#ifndef HIGHS_SCHEDULER_CONSTANTS_H_
+#define HIGHS_SCHEDULER_CONSTANTS_H_
 
-#include "lp_data/HighsLpSolverObject.h"
+struct HighsSchedulerConstants {
+  enum Constants {
+    kNumTryFac = 16,
+    kMicroSecsBeforeSleep = 5000,
+    kMicroSecsBeforeGlobalSync = 1000,
+  };
+};
 
-HighsStatus solveLpIpx(HighsLpSolverObject& solver_object) {
-  solver_object.unscaled_model_status_ = HighsModelStatus::kNotset;
-  return HighsStatus::kError;
-}
 #endif

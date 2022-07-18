@@ -2,12 +2,12 @@
 /*                                                                       */
 /*    This file is part of the HiGHS linear optimization suite           */
 /*                                                                       */
-/*    Written and engineered 2008-2021 at the University of Edinburgh    */
+/*    Written and engineered 2008-2022 at the University of Edinburgh    */
 /*                                                                       */
 /*    Available as open-source under the MIT License                     */
 /*                                                                       */
-/*    Authors: Julian Hall, Ivet Galabova, Qi Huangfu, Leona Gottwald    */
-/*    and Michael Feldmeier                                              */
+/*    Authors: Julian Hall, Ivet Galabova, Leona Gottwald and Michael    */
+/*    Feldmeier                                                          */
 /*                                                                       */
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 /**@file io/HMPSIO.cpp
@@ -16,6 +16,7 @@
 #include "io/HMPSIO.h"
 
 #include <algorithm>
+#include <cstdio>
 
 #include "lp_data/HConst.h"
 #include "lp_data/HighsLp.h"
@@ -24,35 +25,53 @@
 #include "util/HighsUtils.h"
 #include "util/stringutil.h"
 
+#ifdef ZLIB_FOUND
+#include "zstr.hpp"
+#endif
+
 using std::map;
 
 //
 // Read file called filename. Returns 0 if OK and 1 if file can't be opened
 //
-FilereaderRetcode readMps(const HighsLogOptions& log_options,
-                          const std::string filename, HighsInt mxNumRow,
-                          HighsInt mxNumCol, HighsInt& numRow, HighsInt& numCol,
-                          ObjSense& objSense, double& objOffset,
-                          vector<HighsInt>& Astart, vector<HighsInt>& Aindex,
-                          vector<double>& Avalue, vector<double>& colCost,
-                          vector<double>& colLower, vector<double>& colUpper,
-                          vector<double>& rowLower, vector<double>& rowUpper,
-                          vector<HighsVarType>& integerColumn,
-                          vector<string>& col_names, vector<string>& row_names,
-                          const HighsInt keep_n_rows) {
+FilereaderRetcode readMps(
+    const HighsLogOptions& log_options, const std::string filename,
+    HighsInt mxNumRow, HighsInt mxNumCol, HighsInt& numRow, HighsInt& numCol,
+    ObjSense& objSense, double& objOffset, vector<HighsInt>& Astart,
+    vector<HighsInt>& Aindex, vector<double>& Avalue, vector<double>& colCost,
+    vector<double>& colLower, vector<double>& colUpper,
+    vector<double>& rowLower, vector<double>& rowUpper,
+    vector<HighsVarType>& integerColumn, std::string& objective_name,
+    vector<std::string>& col_names, vector<std::string>& row_names,
+    HighsInt& Qdim, vector<HighsInt>& Qstart, vector<HighsInt>& Qindex,
+    vector<double>& Qvalue, HighsInt& cost_row_location,
+    const HighsInt keep_n_rows) {
   // MPS file buffer
   numRow = 0;
   numCol = 0;
+  cost_row_location = -1;
   objOffset = 0;
   objSense = ObjSense::kMinimize;
+  objective_name = "";
 
   // Astart.clear() added since setting Astart.push_back(0) in
   // setup_clearModel() messes up the MPS read
   Astart.clear();
   highsLogDev(log_options, HighsLogType::kInfo,
               "readMPS: Trying to open file %s\n", filename.c_str());
-  FILE* file = fopen(filename.c_str(), "r");
-  if (file == 0) {
+#ifdef ZLIB_FOUND
+  zstr::ifstream file;
+  try {
+    file.open(filename, std::ios::in);
+  } catch (const strict_fstream::Exception& e) {
+    highsLogDev(log_options, HighsLogType::kInfo, e.what());
+    return FilereaderRetcode::kFileNotFound;
+  }
+#else
+  std::ifstream file;
+  file.open(filename, std::ios::in);
+#endif
+  if (!file.is_open()) {
     highsLogDev(log_options, HighsLogType::kInfo,
                 "readMPS: Not opened file OK\n");
     return FilereaderRetcode::kFileNotFound;
@@ -99,7 +118,12 @@ FilereaderRetcode readMps(const HighsLogOptions& log_options,
     if (flag[0] == 'N' &&
         (objName == 0 || keep_n_rows == kKeepNRowsDeleteRows)) {
       // N-row: take the first as the objective and possibly ignore any others
-      if (objName == 0) objName = data[1];
+      if (objName == 0) {
+        objName = data[1];
+        std::string name(&line[4], &line[4] + 8);
+        objective_name = trim(name);
+        cost_row_location = numRow;
+      }
     } else {
       if (mxNumRow > 0 && numRow >= mxNumRow)
         return FilereaderRetcode::kParserError;
@@ -356,6 +380,58 @@ FilereaderRetcode readMps(const HighsLogOptions& log_options,
       }
     }
   }
+  // Load Hessian
+  if (flag[0] == 'Q') {
+    highsLogUser(
+        log_options, HighsLogType::kWarning,
+        "Quadratic section: under development. Assumes QUADOBJ section\n");
+    Qdim = numCol;
+    HighsInt hessian_nz = 0;
+    HighsInt previous_col = -1;
+    bool has_diagonal = false;
+    Qstart.clear();
+    while (load_mpsLine(file, integerCol, lmax, line, flag, data)) {
+      HighsInt iCol0 = colIndex[data[1]] - 1;
+      std::string name0 = "";
+      if (iCol0 >= 0) name0 = col_names[iCol0];
+      HighsInt iCol1 = colIndex[data[2]] - 1;
+      std::string name1 = "";
+      if (iCol1 >= 0) name1 = col_names[iCol1];
+      double value = data[0];
+      if (iCol0 != previous_col) {
+        // Can't handle columns out of order
+        if (iCol0 < previous_col) {
+          return FilereaderRetcode::kParserError;
+        } else if (iCol0 > previous_col) {
+          // A previous column has entries, but not on the diagonal
+          if (previous_col >= 0 && !has_diagonal)
+            return FilereaderRetcode::kParserError;
+          // New column, so set up starts of any intermediate (empty) columns
+          for (HighsInt iCol = previous_col + 1; iCol < iCol0; iCol++)
+            Qstart.push_back(hessian_nz);
+          Qstart.push_back(hessian_nz);
+          previous_col = iCol0;
+          has_diagonal = false;
+        }
+      }
+      // Assumes QUADOBJ, so iCol1 cannot be less than iCol0
+      if (iCol1 < iCol0) return FilereaderRetcode::kParserError;
+      if (iCol1 == iCol0) has_diagonal = true;
+      if (value) {
+        Qindex.push_back(iCol1);
+        Qvalue.push_back(value);
+        hessian_nz++;
+      }
+    }
+    // Hessian entries have been read, so set up starts of any remaining (empty)
+    // columns
+    for (HighsInt iCol = previous_col + 1; iCol < numCol; iCol++)
+      Qstart.push_back(hessian_nz);
+    Qstart.push_back(hessian_nz);
+    assert((HighsInt)Qstart.size() == Qdim + 1);
+    assert((HighsInt)Qindex.size() == hessian_nz);
+    assert((HighsInt)Qvalue.size() == hessian_nz);
+  }
   // Determine the number of integer variables and set bounds of [0,1]
   // for integer variables without bounds
   HighsInt num_int = 0;
@@ -379,16 +455,15 @@ FilereaderRetcode readMps(const HighsLogOptions& log_options,
               " integer\n",
               numRow, numCol, num_int);
   // Load ENDATA and close file
-  fclose(file);
+  file.close();
   // If there are no integer variables then clear the integrality vector
   if (!num_int) integerColumn.clear();
   return FilereaderRetcode::kOk;
 }
 
-bool load_mpsLine(FILE* file, HighsVarType& integerVar, HighsInt lmax,
+bool load_mpsLine(std::istream& file, HighsVarType& integerVar, HighsInt lmax,
                   char* line, char* flag, double* data) {
   HighsInt F1 = 1, F2 = 4, F3 = 14, F4 = 24, F5 = 39, F6 = 49;
-  char* fgets_rt;
 
   // check the buffer
   if (flag[1]) {
@@ -401,12 +476,17 @@ bool load_mpsLine(FILE* file, HighsVarType& integerVar, HighsInt lmax,
   // try to read some to the line
   for (;;) {
     // Line input
-    fgets_rt = fgets(line, lmax, file);
-    if (fgets_rt == NULL) {
+    *line = '\0';
+    file.get(line, lmax);
+    if (*line == '\0' && file.eof())  // nothing read and EOF
       return false;
-    }
+
     // Line trim   -- to delete tailing white spaces
     HighsInt lcnt = strlen(line) - 1;
+    // if file.get() did not stop because it reached the lmax-1 limit,
+    // then because it reached a newline char (or eof); lets consume this
+    // newline (or do nothing if eof)
+    if (lcnt + 1 < lmax - 1) file.get();
     while (isspace(line[lcnt]) && lcnt >= 0) lcnt--;
     if (lcnt <= 0 || line[0] == '*') continue;
 
@@ -466,7 +546,6 @@ HighsStatus writeModelAsMps(const HighsOptions& options,
   std::vector<std::string> local_row_names;
   local_col_names.resize(lp.num_col_);
   local_row_names.resize(lp.num_row_);
-  //
   // Initialise the local names to any existing names
   if (have_col_names) local_col_names = lp.col_names_;
   if (have_row_names) local_row_names = lp.row_names_;
@@ -475,7 +554,7 @@ HighsStatus writeModelAsMps(const HighsOptions& options,
   HighsInt max_col_name_length = kHighsIInf;
   if (!free_format) max_col_name_length = 8;
   HighsStatus col_name_status =
-      normaliseNames(options.log_options, "Column", lp.num_col_,
+      normaliseNames(options.log_options, "column", lp.num_col_,
                      local_col_names, max_col_name_length);
   if (col_name_status == HighsStatus::kError) return col_name_status;
   warning_found = col_name_status == HighsStatus::kWarning || warning_found;
@@ -484,7 +563,7 @@ HighsStatus writeModelAsMps(const HighsOptions& options,
   HighsInt max_row_name_length = kHighsIInf;
   if (!free_format) max_row_name_length = 8;
   HighsStatus row_name_status =
-      normaliseNames(options.log_options, "Row", lp.num_row_, local_row_names,
+      normaliseNames(options.log_options, "row", lp.num_row_, local_row_names,
                      max_row_name_length);
   if (row_name_status == HighsStatus::kError) return col_name_status;
   warning_found = row_name_status == HighsStatus::kWarning || warning_found;
@@ -502,17 +581,20 @@ HighsStatus writeModelAsMps(const HighsOptions& options,
       warning_found = true;
     }
   }
+  // Set a local objective name, creating one if necessary
+  const std::string local_objective_name =
+      findModelObjectiveName(&lp, &hessian);
   // If there is Hessian data to write out, writeMps assumes that hessian is
   // triangular
   if (hessian.dim_) assert(hessian.format_ == HessianFormat::kTriangular);
 
-  HighsStatus write_status =
-      writeMps(options.log_options, filename, lp.model_name_, lp.num_row_,
-               lp.num_col_, hessian.dim_, lp.sense_, lp.offset_, lp.col_cost_,
-               lp.col_lower_, lp.col_upper_, lp.row_lower_, lp.row_upper_,
-               lp.a_matrix_.start_, lp.a_matrix_.index_, lp.a_matrix_.value_,
-               hessian.start_, hessian.index_, hessian.value_, lp.integrality_,
-               local_col_names, local_row_names, use_free_format);
+  HighsStatus write_status = writeMps(
+      options.log_options, filename, lp.model_name_, lp.num_row_, lp.num_col_,
+      hessian.dim_, lp.sense_, lp.offset_, lp.col_cost_, lp.col_lower_,
+      lp.col_upper_, lp.row_lower_, lp.row_upper_, lp.a_matrix_.start_,
+      lp.a_matrix_.index_, lp.a_matrix_.value_, hessian.start_, hessian.index_,
+      hessian.value_, lp.integrality_, local_objective_name, local_col_names,
+      local_row_names, use_free_format);
   if (write_status == HighsStatus::kOk && warning_found)
     return HighsStatus::kWarning;
   return write_status;
@@ -528,7 +610,7 @@ HighsStatus writeMps(
     const vector<HighsInt>& a_start, const vector<HighsInt>& a_index,
     const vector<double>& a_value, const vector<HighsInt>& q_start,
     const vector<HighsInt>& q_index, const vector<double>& q_value,
-    const vector<HighsVarType>& integrality,
+    const vector<HighsVarType>& integrality, const std::string objective_name,
     const vector<std::string>& col_names, const vector<std::string>& row_names,
     const bool use_free_format) {
   const bool write_zero_no_cost_columns = true;
@@ -555,6 +637,7 @@ HighsStatus writeMps(
         max_name_length);
     return HighsStatus::kError;
   }
+  assert(objective_name != "");
   vector<HighsInt> r_ty;
   vector<double> rhs, ranges;
   bool have_rhs = false;
@@ -674,7 +757,7 @@ HighsStatus writeMps(
 
   fprintf(file, "NAME        %s\n", model_name.c_str());
   fprintf(file, "ROWS\n");
-  fprintf(file, " N  COST\n");
+  fprintf(file, " N  %-8s\n", objective_name.c_str());
   for (HighsInt r_n = 0; r_n < num_row; r_n++) {
     if (r_ty[r_n] == MPS_ROW_TY_E) {
       fprintf(file, " E  %-8s\n", row_names[r_n].c_str());
@@ -696,7 +779,8 @@ HighsStatus writeMps(
       if (write_zero_no_cost_columns) {
         // Give the column a presence by writing out a zero cost
         double v = 0;
-        fprintf(file, "    %-8s  COST      %.15g\n", col_names[c_n].c_str(), v);
+        fprintf(file, "    %-8s  %-8s  %.15g\n", col_names[c_n].c_str(),
+                objective_name.c_str(), v);
       }
       continue;
     }
@@ -706,22 +790,21 @@ HighsStatus writeMps(
         fprintf(file,
                 "    MARK%04" HIGHSINT_FORMAT
                 "  'MARKER'                 'INTORG'\n",
-                nIntegerMk);
-        nIntegerMk++;
+                nIntegerMk++);
         integerFg = true;
       } else if (integrality[c_n] != HighsVarType::kInteger && integerFg) {
         // End an integer section
         fprintf(file,
                 "    MARK%04" HIGHSINT_FORMAT
                 "  'MARKER'                 'INTEND'\n",
-                nIntegerMk);
-        nIntegerMk++;
+                nIntegerMk++);
         integerFg = false;
       }
     }
     if (col_cost[c_n] != 0) {
       double v = (HighsInt)sense * col_cost[c_n];
-      fprintf(file, "    %-8s  COST      %.15g\n", col_names[c_n].c_str(), v);
+      fprintf(file, "    %-8s  %-8s  %.15g\n", col_names[c_n].c_str(),
+              objective_name.c_str(), v);
     }
     for (HighsInt el_n = a_start[c_n]; el_n < a_start[c_n + 1]; el_n++) {
       double v = a_value[el_n];
@@ -730,13 +813,19 @@ HighsStatus writeMps(
               row_names[r_n].c_str(), v);
     }
   }
+  // End any integer section
+  if (integerFg)
+    fprintf(file,
+            "    MARK%04" HIGHSINT_FORMAT
+            "  'MARKER'                 'INTEND'\n",
+            nIntegerMk++);
   have_rhs = true;
   if (have_rhs) {
     fprintf(file, "RHS\n");
     if (offset) {
       // Handle the objective offset as a RHS entry for the cost row
       double v = -(HighsInt)sense * offset;
-      fprintf(file, "    RHS_V     COST      %.15g\n", v);
+      fprintf(file, "    RHS_V     %-8s  %.15g\n", objective_name.c_str(), v);
     }
     for (HighsInt r_n = 0; r_n < num_row; r_n++) {
       double v = rhs[r_n];
@@ -770,7 +859,7 @@ HighsStatus writeMps(
           // Column would have a bound to report
           num_zero_no_cost_columns_in_bounds_section++;
         }
-        if (write_zero_no_cost_columns) continue;
+        if (!write_zero_no_cost_columns) continue;
       }
       if (lb == ub) {
         // Equal lower and upper bounds: Fixed
@@ -833,9 +922,8 @@ HighsStatus writeMps(
   if (q_dim) {
     // Write out Hessian info
     assert((HighsInt)q_start.size() >= q_dim + 1);
-    HighsInt hessian_num_nz = q_start[q_dim];
-    assert((HighsInt)q_index.size() >= hessian_num_nz);
-    assert((HighsInt)q_value.size() >= hessian_num_nz);
+    assert((HighsInt)q_index.size() >= q_start[q_dim]);
+    assert((HighsInt)q_value.size() >= q_start[q_dim]);
 
     // Assumes that Hessian entries are the lower triangle column-wise
     fprintf(file, "QUADOBJ\n");
@@ -843,8 +931,10 @@ HighsStatus writeMps(
       for (HighsInt el = q_start[col]; el < q_start[col + 1]; el++) {
         HighsInt row = q_index[el];
         assert(row >= col);
-        fprintf(file, "    %-8s  %-8s  %.15g\n", col_names[col].c_str(),
-                col_names[row].c_str(), q_value[el]);
+        // May have explicit zeroes on the diagonal
+        if (q_value[el])
+          fprintf(file, "    %-8s  %-8s  %.15g\n", col_names[col].c_str(),
+                  col_names[row].c_str(), (HighsInt)sense * q_value[el]);
       }
     }
   }

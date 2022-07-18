@@ -2,12 +2,12 @@
 /*                                                                       */
 /*    This file is part of the HiGHS linear optimization suite           */
 /*                                                                       */
-/*    Written and engineered 2008-2021 at the University of Edinburgh    */
+/*    Written and engineered 2008-2022 at the University of Edinburgh    */
 /*                                                                       */
 /*    Available as open-source under the MIT License                     */
 /*                                                                       */
-/*    Authors: Julian Hall, Ivet Galabova, Qi Huangfu, Leona Gottwald    */
-/*    and Michael Feldmeier                                              */
+/*    Authors: Julian Hall, Ivet Galabova, Leona Gottwald and Michael    */
+/*    Feldmeier                                                          */
 /*                                                                       */
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 /**@file
@@ -19,8 +19,7 @@
 #include <cmath>
 #include <iostream>
 
-#include "HighsCDouble.h"
-#include "presolve/PresolveUtils.h"
+#include "util/HighsCDouble.h"
 
 namespace presolve {
 namespace dev_kkt_check {
@@ -198,18 +197,6 @@ void checkDualFeasibility(const State& state, KktConditionDetails& details) {
       double infeas = 0;
       // L = Ax < U
       if (fabs(state.rowLower[i] - rowV) < tol && rowV < state.rowUpper[i]) {
-        if (state.rowDual[i] > tol) {
-          if (dev_print == 1)
-            std::cout << "Dual feasibility fail for row " << i
-                      << ": L= " << state.rowLower[i] << ", Ax=" << rowV
-                      << ", U=" << state.rowUpper[i]
-                      << ", y=" << state.rowDual[i] << std::endl;
-          infeas = state.rowDual[i];
-        }
-      }
-      // L < Ax = U
-      else if (state.rowLower[i] < rowV &&
-               fabs(rowV - state.rowUpper[i]) < tol) {
         if (state.rowDual[i] < -tol) {
           if (dev_print == 1)
             std::cout << "Dual feasibility fail for row " << i
@@ -217,6 +204,18 @@ void checkDualFeasibility(const State& state, KktConditionDetails& details) {
                       << ", U=" << state.rowUpper[i]
                       << ", y=" << state.rowDual[i] << std::endl;
           infeas = -state.rowDual[i];
+        }
+      }
+      // L < Ax = U
+      else if (state.rowLower[i] < rowV &&
+               fabs(rowV - state.rowUpper[i]) < tol) {
+        if (state.rowDual[i] > tol) {
+          if (dev_print == 1)
+            std::cout << "Dual feasibility fail for row " << i
+                      << ": L= " << state.rowLower[i] << ", Ax=" << rowV
+                      << ", U=" << state.rowUpper[i]
+                      << ", y=" << state.rowDual[i] << std::endl;
+          infeas = state.rowDual[i];
         }
       }
       // L < Ax < U
@@ -320,7 +319,7 @@ void checkStationarityOfLagrangian(const State& state,
         const int row = state.Aindex[k];
         assert(row >= 0 && row < state.numRow);
         if (state.flagRow[row])
-          lagrV = lagrV + state.rowDual[row] * state.Avalue[k];
+          lagrV = lagrV - state.rowDual[row] * state.Avalue[k];
       }
 
       if (fabs(double(lagrV)) > tol) {

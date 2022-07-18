@@ -2,12 +2,12 @@
 /*                                                                       */
 /*    This file is part of the HiGHS linear optimization suite           */
 /*                                                                       */
-/*    Written and engineered 2008-2021 at the University of Edinburgh    */
+/*    Written and engineered 2008-2022 at the University of Edinburgh    */
 /*                                                                       */
 /*    Available as open-source under the MIT License                     */
 /*                                                                       */
-/*    Authors: Julian Hall, Ivet Galabova, Qi Huangfu, Leona Gottwald    */
-/*    and Michael Feldmeier                                              */
+/*    Authors: Julian Hall, Ivet Galabova, Leona Gottwald and Michael    */
+/*    Feldmeier                                                          */
 /*                                                                       */
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 /**@file lp_data/HighsRanging.cpp
@@ -24,8 +24,10 @@
 
 using std::min;
 
+void HighsRanging::invalidate() { valid = false; }
+
 void HighsRanging::clear() {
-  valid = false;
+  this->invalidate();
   this->col_cost_up.value_.clear();
   this->col_cost_up.objective_.clear();
   this->col_cost_up.in_var_.clear();
@@ -52,7 +54,7 @@ void HighsRanging::clear() {
   this->row_bound_dn.ou_var_.clear();
 }
 
-double infProduct(double value) {
+static double infProduct(double value) {
   // Multiplying value and kHighsInf
   if (value == 0) {
     return 0;
@@ -61,7 +63,7 @@ double infProduct(double value) {
   }
 }
 
-double possInfProduct(double poss_inf, double value) {
+static double possInfProduct(double poss_inf, double value) {
   // Multiplying something that could be infinite and value
   if (value == 0) {
     return 0;
@@ -73,7 +75,7 @@ double possInfProduct(double poss_inf, double value) {
 HighsStatus getRangingData(HighsRanging& ranging,
                            HighsLpSolverObject& solver_object) {
   ranging.clear();
-  if (solver_object.scaled_model_status_ != HighsModelStatus::kOptimal) {
+  if (solver_object.model_status_ != HighsModelStatus::kOptimal) {
     highsLogUser(solver_object.options_.log_options, HighsLogType::kError,
                  "Cannot get ranging without an optimal solution\n");
     return HighsStatus::kError;

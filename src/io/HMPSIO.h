@@ -2,12 +2,12 @@
 /*                                                                       */
 /*    This file is part of the HiGHS linear optimization suite           */
 /*                                                                       */
-/*    Written and engineered 2008-2021 at the University of Edinburgh    */
+/*    Written and engineered 2008-2022 at the University of Edinburgh    */
 /*                                                                       */
 /*    Available as open-source under the MIT License                     */
 /*                                                                       */
-/*    Authors: Julian Hall, Ivet Galabova, Qi Huangfu, Leona Gottwald    */
-/*    and Michael Feldmeier                                              */
+/*    Authors: Julian Hall, Ivet Galabova, Leona Gottwald and Michael    */
+/*    Feldmeier                                                          */
 /*                                                                       */
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 /**@file io/HMPSIO.h
@@ -17,7 +17,6 @@
 #define IO_HMPSIO_H_
 
 #include <cmath>
-#include <cstdio>
 #include <cstring>
 #include <fstream>
 #include <iostream>
@@ -54,8 +53,11 @@ FilereaderRetcode readMps(
     vector<HighsInt>& Aindex, vector<double>& Avalue, vector<double>& colCost,
     vector<double>& colLower, vector<double>& colUpper,
     vector<double>& rowLower, vector<double>& rowUpper,
-    vector<HighsVarType>& integerColumn, vector<std::string>& col_names,
-    vector<std::string>& row_names, const HighsInt keep_n_rows = 0);
+    vector<HighsVarType>& integerColumn, std::string& objective_name,
+    vector<std::string>& col_names, vector<std::string>& row_names,
+    HighsInt& Qdim, vector<HighsInt>& Qstart, vector<HighsInt>& Qindex,
+    vector<double>& Qvalue, HighsInt& cost_row_location,
+    const HighsInt keep_n_rows = 0);
 
 HighsStatus writeMps(
     const HighsLogOptions& log_options, const std::string filename,
@@ -67,11 +69,11 @@ HighsStatus writeMps(
     const vector<HighsInt>& a_start, const vector<HighsInt>& a_index,
     const vector<double>& a_value, const vector<HighsInt>& q_start,
     const vector<HighsInt>& q_index, const vector<double>& q_value,
-    const vector<HighsVarType>& integrality,
+    const vector<HighsVarType>& integrality, std::string objective_name,
     const vector<std::string>& col_names, const vector<std::string>& row_names,
     const bool use_free_format = true);
 
-bool load_mpsLine(FILE* file, HighsVarType& integerVar, HighsInt lmax,
+bool load_mpsLine(std::istream& file, HighsVarType& integerVar, HighsInt lmax,
                   char* line, char* flag, double* data);
 
 HighsStatus writeModelAsMps(const HighsOptions& options,

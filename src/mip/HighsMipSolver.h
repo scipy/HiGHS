@@ -2,12 +2,12 @@
 /*                                                                       */
 /*    This file is part of the HiGHS linear optimization suite           */
 /*                                                                       */
-/*    Written and engineered 2008-2021 at the University of Edinburgh    */
+/*    Written and engineered 2008-2022 at the University of Edinburgh    */
 /*                                                                       */
 /*    Available as open-source under the MIT License                     */
 /*                                                                       */
-/*    Authors: Julian Hall, Ivet Galabova, Qi Huangfu, Leona Gottwald    */
-/*    and Michael Feldmeier                                              */
+/*    Authors: Julian Hall, Ivet Galabova, Leona Gottwald and Michael    */
+/*    Feldmeier                                                          */
 /*                                                                       */
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 #ifndef MIP_HIGHS_MIP_SOLVER_H_
@@ -35,6 +35,7 @@ class HighsMipSolver {
   double row_violation_;
   double dual_bound_;
   double primal_bound_;
+  double gap_;
   int64_t node_count_;
 
   bool submip;
@@ -64,8 +65,6 @@ class HighsMipSolver {
   const double* rowUpper() const { return model_->row_upper_.data(); }
 
   double rowUpper(HighsInt col) const { return model_->row_upper_[col]; }
-
-  bool isSolutionFeasible(const std::vector<double>& solution) const;
 
   const HighsVarType* variableType() const {
     return model_->integrality_.data();

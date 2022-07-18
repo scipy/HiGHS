@@ -2,12 +2,12 @@
 /*                                                                       */
 /*    This file is part of the HiGHS linear optimization suite           */
 /*                                                                       */
-/*    Written and engineered 2008-2021 at the University of Edinburgh    */
+/*    Written and engineered 2008-2022 at the University of Edinburgh    */
 /*                                                                       */
 /*    Available as open-source under the MIT License                     */
 /*                                                                       */
-/*    Authors: Julian Hall, Ivet Galabova, Qi Huangfu, Leona Gottwald    */
-/*    and Michael Feldmeier                                              */
+/*    Authors: Julian Hall, Ivet Galabova, Leona Gottwald and Michael    */
+/*    Feldmeier                                                          */
 /*                                                                       */
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 /**@file simplex/HEkkDualRow.cpp
@@ -168,8 +168,11 @@ HighsInt HEkkDualRow::chooseFinal() {
   use_quad_sort = true;  // workCount < 100;
   use_heap_sort = !use_quad_sort;
   assert(use_heap_sort || use_quad_sort);
-  if (workCount < 100) {
+  if (use_quad_sort) {
     analysis->num_quad_chuzc++;
+    analysis->sum_quad_chuzc_size += workCount;
+    analysis->max_quad_chuzc_size =
+        max(workCount, analysis->max_quad_chuzc_size);
   } else {
     analysis->num_heap_chuzc++;
     analysis->sum_heap_chuzc_size += workCount;

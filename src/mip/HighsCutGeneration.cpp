@@ -2,12 +2,12 @@
 /*                                                                       */
 /*    This file is part of the HiGHS linear optimization suite           */
 /*                                                                       */
-/*    Written and engineered 2008-2021 at the University of Edinburgh    */
+/*    Written and engineered 2008-2022 at the University of Edinburgh    */
 /*                                                                       */
 /*    Available as open-source under the MIT License                     */
 /*                                                                       */
-/*    Authors: Julian Hall, Ivet Galabova, Qi Huangfu, Leona Gottwald    */
-/*    and Michael Feldmeier                                              */
+/*    Authors: Julian Hall, Ivet Galabova, Leona Gottwald and Michael    */
+/*    Feldmeier                                                          */
 /*                                                                       */
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 #include "mip/HighsCutGeneration.h"
@@ -340,7 +340,7 @@ bool HighsCutGeneration::separateLiftedMixedIntegerCover() {
     if (std::abs(vals[j]) < 1000 * feastol) continue;
 
     double mudival = double(mu / vals[j]);
-    if (std::abs(std::round(mudival) - mudival) <= feastol) continue;
+    if (HighsIntegers::isIntegral(mudival, feastol)) continue;
     double eta = ceil(mudival);
 
     HighsCDouble ulminusetaplusone = HighsCDouble(ub) - eta + 1.0;
@@ -543,6 +543,9 @@ bool HighsCutGeneration::cmirCutGenerationHeuristic(double minEfficacy,
       }
     } else {
       continuouscontribution += vals[i] * solval[i];
+
+      if (vals[i] > 0 && solval[i] <= feastol) continue;
+      if (vals[i] < 0 && solval[i] >= upper[i] - feastol) continue;
       continuoussqrnorm += vals[i] * vals[i];
     }
   }
@@ -598,6 +601,9 @@ bool HighsCutGeneration::cmirCutGenerationHeuristic(double minEfficacy,
       double aj = downaj + std::max(0.0, fj - f0);
 
       viol += aj * solval[j];
+
+      if (aj > 0 && solval[j] <= feastol) continue;
+      if (aj < 0 && solval[j] >= upper[j] - feastol) continue;
       sqrnorm += aj * aj;
     }
 
@@ -632,6 +638,9 @@ bool HighsCutGeneration::cmirCutGenerationHeuristic(double minEfficacy,
       double aj = downaj + std::max(0.0, fj - f0);
 
       viol += aj * solval[j];
+
+      if (aj > 0 && solval[j] <= feastol) continue;
+      if (aj < 0 && solval[j] >= upper[j] - feastol) continue;
       sqrnorm += aj * aj;
     }
 
@@ -642,7 +651,7 @@ bool HighsCutGeneration::cmirCutGenerationHeuristic(double minEfficacy,
     }
   }
 
-  if (bestdelta == -1) return false;
+  assert(bestdelta != -1);
 
   // try to flip complementation of integers to increase efficacy
   for (HighsInt k : integerinds) {
@@ -688,6 +697,9 @@ bool HighsCutGeneration::cmirCutGenerationHeuristic(double minEfficacy,
       double aj = downaj + std::max(0.0, fj - f0);
 
       viol += aj * solval[j];
+
+      if (aj > 0 && solval[j] <= feastol) continue;
+      if (aj < 0 && solval[j] >= upper[j] - feastol) continue;
       sqrnorm += aj * aj;
     }
 
@@ -807,22 +819,26 @@ bool HighsCutGeneration::postprocessCut() {
     bool scaleSmallestValToOne = true;
 
     if (intscale != 0.0 &&
-        intscale * std::max(1.0, maxAbsValue) <= (double)(uint64_t{1} << 53)) {
+        intscale * std::max(1.0, maxAbsValue) <= (double)(uint64_t{1} << 52)) {
       // A scale to make all value integral was found. The scale is only
       // rejected if it is in a range where not all integral values are
-      // representable in double precision anymore. Otherwise we want to always
-      // use the scale to adjust the coefficients and right hand side for
-      // numerical safety reasons. If the resulting integral values are too
-      // large, however, we scale the cut down by shifting the exponent.
+      // representable in double precision anymore or cannot be correctly
+      // rounded by adding 0.5 and casting to an int. The latter starts at 2^52
+      // + 1 since adding 0.5 will round upwards to the next even number for
+      // that magnitude. So the largest acceptable value is 2^52 and when at
+      // most that value we want to always use the scale to adjust the
+      // coefficients and right hand side for numerical safety reasons. If the
+      // resulting integral values are too large, however, we scale the cut down
+      // by shifting the exponent.
       rhs.renormalize();
       rhs *= intscale;
-      maxAbsValue = std::round(maxAbsValue * intscale);
+      maxAbsValue = HighsIntegers::nearestInteger(maxAbsValue * intscale);
       for (HighsInt i = 0; i != rowlen; ++i) {
         HighsCDouble scaleval = intscale * HighsCDouble(vals[i]);
-        HighsCDouble intval = round(scaleval);
+        double intval = HighsIntegers::nearestInteger(double(scaleval));
         double delta = double(scaleval - intval);
 
-        vals[i] = (double)intval;
+        vals[i] = intval;
 
         // if the coefficient would be strengthened by rounding, we add the
         // upperbound constraint to make it exactly integral instead and
@@ -1177,8 +1193,11 @@ bool HighsCutGeneration::generateCut(HighsTransformedLp& transLp,
       double sqrnorm = 0.0;
 
       for (HighsInt i = 0; i < rowlen; ++i) {
-        sqrnorm += vals[i] * vals[i];
         violation += vals[i] * solval[i];
+
+        if (vals[i] > 0 && solval[i] <= feastol) continue;
+        if (vals[i] < 0 && solval[i] >= upper[i] - feastol) continue;
+        sqrnorm += vals[i] * vals[i];
       }
 
       double efficacy = violation / std::sqrt(sqrnorm);
@@ -1310,6 +1329,7 @@ bool HighsCutGeneration::generateConflict(HighsDomain& localdomain,
   solval.resize(rowlen);
 
   HighsDomain& globaldomain = lpRelaxation.getMipSolver().mipdata_->domain;
+  double activity = 0.0;
   for (HighsInt i = 0; i != rowlen; ++i) {
     HighsInt col = inds[i];
 
@@ -1330,6 +1350,13 @@ bool HighsCutGeneration::generateConflict(HighsDomain& localdomain,
       complementation[i] = 0;
       solval[i] = solval[i] - globaldomain.col_lower_[col];
     }
+
+    activity += solval[i] * vals[i];
+  }
+
+  if (activity > rhs) {
+    double solScale = double(rhs) / activity;
+    for (HighsInt i = 0; i != rowlen; ++i) solval[i] *= solScale;
   }
 
   bool hasUnboundedInts = false;
@@ -1341,7 +1368,7 @@ bool HighsCutGeneration::generateConflict(HighsDomain& localdomain,
     return false;
 
   if (hasUnboundedInts) {
-    if (!cmirCutGenerationHeuristic(-kHighsInf)) return false;
+    if (!cmirCutGenerationHeuristic(feastol)) return false;
   } else {
     // 1. Determine a cover, cover does not need to be minimal as neither of
     // the
@@ -1371,13 +1398,16 @@ bool HighsCutGeneration::generateConflict(HighsDomain& localdomain,
       }
     } while (false);
 
-    double minEfficacy = -kHighsInf;
+    double minEfficacy = feastol;
     if (success) {
       double violation = -double(rhs);
       double sqrnorm = 0.0;
 
       for (HighsInt i = 0; i < rowlen; ++i) {
         violation += vals[i] * solval[i];
+
+        if (vals[i] > 0 && solval[i] <= feastol) continue;
+        if (vals[i] < 0 && solval[i] >= upper[i] - feastol) continue;
         sqrnorm += vals[i] * vals[i];
       }
 

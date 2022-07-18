@@ -84,7 +84,7 @@ struct MatrixBase {
 
   Vector& vec_mat_1(const Vector& other, Vector& target) const {
     target.reset();
-    for (HighsInt col=0; col < num_col; col++) {
+    for (HighsInt col = 0; col < num_col; col++) {
       double dot = 0.0;
       for (HighsInt j = start[col]; j < start[col + 1]; j++) {
         dot += other.value[index[j]] * value[j];
@@ -292,18 +292,6 @@ struct Matrix {
       res.append(mat_vec(other.mat.extractcol(col, buffer), buffer2));
     }
     return res;
-  }
-
-  Matrix mat_tran(Matrix& other) {
-    printf("not implemented\n");
-    exit(1);
-    return other;
-  }
-
-  Matrix tran_tran(Matrix& other) {
-    printf("not implemented\n");
-    exit(1);
-    return other;
   }
 
   Vector& mat_vec(const Vector& other, Vector& target) {
