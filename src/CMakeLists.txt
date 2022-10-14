@@ -131,6 +131,7 @@ set(sources
     presolve/HighsPostsolveStack.cpp
     presolve/HighsSymmetry.cpp
     presolve/HPresolve.cpp
+    presolve/HPresolveAnalysis.cpp
     presolve/PresolveComponent.cpp
     qpsolver/basis.cpp
     qpsolver/quass.cpp
@@ -236,6 +237,7 @@ set(headers
     parallel/HighsCombinable.h
     parallel/HighsMutex.h
     parallel/HighsParallel.h
+    parallel/HighsRaceTimer.h
     parallel/HighsSchedulerConstants.h
     parallel/HighsSpinMutex.h
     parallel/HighsSplitDeque.h
@@ -265,6 +267,7 @@ set(headers
     presolve/HighsPostsolveStack.h
     presolve/HighsSymmetry.h
     presolve/HPresolve.h
+    presolve/HPresolveAnalysis.h
     presolve/PresolveComponent.h
     test/DevKkt.h
     test/KktCh2.h
@@ -277,6 +280,7 @@ set(headers
     util/HighsDataStack.h
     util/HighsDisjointSets.h
     util/HighsHash.h
+    util/HighsHashTree.h
     util/HighsInt.h
     util/HighsIntegers.h
     util/HighsLinearSumBounds.h
@@ -517,6 +521,7 @@ target_sources(libhighs PRIVATE
     presolve/HighsPostsolveStack.cpp
     presolve/HighsSymmetry.cpp
     presolve/HPresolve.cpp
+    presolve/HPresolveAnalysis.cpp
     presolve/PresolveComponent.cpp
     qpsolver/basis.cpp
     qpsolver/quass.cpp
@@ -672,6 +677,7 @@ set(headers_fast_build_
     parallel/HighsCombinable.h
     parallel/HighsMutex.h
     parallel/HighsParallel.h
+    parallel/HighsRaceTimer.h
     parallel/HighsSchedulerConstants.h
     parallel/HighsSpinMutex.h
     parallel/HighsSplitDeque.h
@@ -701,6 +707,7 @@ set(headers_fast_build_
     presolve/HighsPostsolveStack.h
     presolve/HighsSymmetry.h
     presolve/HPresolve.h
+    presolve/HPresolveAnalysis.h
     presolve/PresolveComponent.h
     test/DevKkt.h
     test/KktCh2.h
@@ -713,6 +720,7 @@ set(headers_fast_build_
     util/HighsDataStack.h
     util/HighsDisjointSets.h
     util/HighsHash.h
+    util/HighsHashTree.h
     util/HighsInt.h
     util/HighsIntegers.h
     util/HighsLinearSumBounds.h
