@@ -458,6 +458,7 @@ void HEkkDual::initialiseInstanceParallel(HEkk& simplex) {
     if (multi_num > kSimplexConcurrencyLimit)
       multi_num = kSimplexConcurrencyLimit;
     for (HighsInt i = 0; i < multi_num; i++) {
+      multi_choice[i].row_out = -1;
       multi_choice[i].row_ep.setup(solver_num_row);
       multi_choice[i].col_aq.setup(solver_num_row);
       multi_choice[i].col_BFRT.setup(solver_num_row);
@@ -1263,25 +1264,25 @@ void HEkkDual::iterateTasks() {
   if (1.0 * row_ep.count / solver_num_row < 0.01) slice_PRICE = 0;
 
   analysis->simplexTimerStart(Group1Clock);
-  //#pragma omp parallel
-  //#pragma omp single
+  // #pragma omp parallel
+  // #pragma omp single
   {
-    //#pragma omp task
+    // #pragma omp task
     highs::parallel::spawn([&]() {
       col_DSE.copy(&row_ep);
       updateFtranDSE(&col_DSE);
     });
-    //#pragma omp task
+    // #pragma omp task
     {
       if (slice_PRICE)
         chooseColumnSlice(&row_ep);
       else
         chooseColumn(&row_ep);
-      //#pragma omp task
+      // #pragma omp task
       highs::parallel::spawn([&]() { updateFtranBFRT(); });
-      //#pragma omp task
+      // #pragma omp task
       updateFtran();
-      //#pragma omp taskwait
+      // #pragma omp taskwait
       highs::parallel::sync();
     }
 
@@ -2133,6 +2134,7 @@ void HEkkDual::updatePrimal(HVector* DSE_Vector) {
   double u_out = baseUpper[row_out];
   theta_primal = (x_out - (delta_primal < 0 ? l_out : u_out)) / alpha_col;
   dualRHS.updatePrimal(&col_aq, theta_primal);
+  ekk_instance_.updateBadBasisChange(col_aq, theta_primal);
   if (edge_weight_mode == EdgeWeightMode::kSteepestEdge) {
     const double pivot_in_scaled_space =
         ekk_instance_.simplex_nla_.pivotInScaledSpace(&col_aq, variable_in,

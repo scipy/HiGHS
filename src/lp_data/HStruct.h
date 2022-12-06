@@ -78,10 +78,23 @@ struct HighsScale {
 };
 
 struct HighsLpMods {
+  std::vector<HighsInt> save_semi_variable_lower_bound_index;
+  std::vector<double> save_semi_variable_lower_bound_value;
   std::vector<HighsInt> save_semi_variable_upper_bound_index;
   std::vector<double> save_semi_variable_upper_bound_value;
   void clear();
   bool isClear();
+};
+
+struct HighsPresolveRuleLog {
+  HighsInt call;
+  HighsInt col_removed;
+  HighsInt row_removed;
+};
+
+struct HighsPresolveLog {
+  std::vector<HighsPresolveRuleLog> rule;
+  void clear();
 };
 
 #endif /* LP_DATA_HSTRUCT_H_ */

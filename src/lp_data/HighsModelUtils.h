@@ -16,14 +16,14 @@
 #ifndef LP_DATA_HIGHSMODELUTILS_H_
 #define LP_DATA_HIGHSMODELUTILS_H_
 
-//#include "Highs.h"
-//#include "lp_data/HighsStatus.h"
+// #include "Highs.h"
+// #include "lp_data/HighsStatus.h"
 #include "lp_data/HighsInfo.h"
 #include "model/HighsModel.h"
-//#include "lp_data/HStruct.h"
-//#include "lp_data/HighsInfo.h"
-//#include "lp_data/HighsLp.h"
-//#include "lp_data/HighsOptions.h"
+// #include "lp_data/HStruct.h"
+// #include "lp_data/HighsInfo.h"
+// #include "lp_data/HighsLp.h"
+// #include "lp_data/HighsOptions.h"
 
 // Analyse lower and upper bounds of a model
 void analyseModelBounds(const HighsLogOptions& log_options, const char* message,
@@ -80,6 +80,8 @@ std::string utilSolutionStatusToString(const HighsInt solution_status);
 std::string utilBasisStatusToString(const HighsBasisStatus basis_status);
 
 std::string utilBasisValidityToString(const HighsInt basis_validity);
+
+std::string utilPresolveRuleTypeToString(const HighsInt rule_type);
 
 HighsStatus highsStatusFromHighsModelStatus(HighsModelStatus model_status);
 

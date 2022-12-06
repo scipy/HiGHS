@@ -1,13 +1,15 @@
 
-#include "../extern/filereaderlp/reader.hpp"
 #include "Highs.h"
 #include "catch.hpp"
+#include "filereaderlp/reader.hpp"
 
-TEST_CASE(
-    "highs can load .lp files that contain quadratic terms without a space") {
+const bool dev_run = false;
+
+TEST_CASE("lp-file-format-quad-no-space", "[LpFileFormat]") {
   std::string filename =
       std::string(HIGHS_DIR) + "/check/instances/quadratic.lp";
   Highs highs;
+  highs.setOptionValue("output_flag", dev_run);
   REQUIRE(highs.readModel(filename) == HighsStatus::kOk);
 
   // todo: read the coefficients/variables off the highs model
