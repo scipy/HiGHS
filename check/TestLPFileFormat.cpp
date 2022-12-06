@@ -1,7 +1,7 @@
 
-#include "../extern/filereaderlp/reader.hpp"
 #include "Highs.h"
 #include "catch.hpp"
+#include "filereaderlp/reader.hpp"
 
 const bool dev_run = false;
 

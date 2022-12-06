@@ -1,7 +1,7 @@
 #include "Avgas.h"
 #include "Highs.h"
-#include "HighsLpUtils.h"
 #include "catch.hpp"
+#include "lp_data/HighsLpUtils.h"
 
 const bool dev_run = false;
 const double inf = kHighsInf;
