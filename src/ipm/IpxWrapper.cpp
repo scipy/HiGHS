@@ -26,7 +26,8 @@ using std::min;
 HighsStatus solveLpIpx(HighsLpSolverObject& solver_object) {
   return solveLpIpx(solver_object.options_, solver_object.timer_, solver_object.lp_, 
                     solver_object.basis_, solver_object.solution_, 
-                    solver_object.model_status_, solver_object.highs_info_);
+                    solver_object.model_status_, solver_object.highs_info_,
+                    solver_object.scipy_clbk_);
 }
 
 HighsStatus solveLpIpx(const HighsOptions& options,
@@ -35,7 +36,8 @@ HighsStatus solveLpIpx(const HighsOptions& options,
                        HighsBasis& highs_basis,
 		       HighsSolution& highs_solution,
                        HighsModelStatus& model_status,
-                       HighsInfo& highs_info) {
+                       HighsInfo& highs_info,
+                       scipy::clbk_t scipy_clbk) {
   // Use IPX to try to solve the LP
   //
   // Can return HighsModelStatus (HighsStatus) values:
@@ -141,7 +143,7 @@ HighsStatus solveLpIpx(const HighsOptions& options,
   }
 
   // Use IPX to solve the LP!
-  ipx::Int solve_status = lps.Solve();
+  ipx::Int solve_status = lps.Solve(scipy_clbk);
 
   const bool report_solve_data = kHighsAnalysisLevelSolverSummaryData & options.highs_analysis_level;
   // Get solver and solution information.

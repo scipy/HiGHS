@@ -25,6 +25,8 @@
 #include "presolve/ICrash.h"
 #include "presolve/PresolveComponent.h"
 
+#include "scipy.h"
+
 /**
  * @brief Class to set parameters and run HiGHS
  */
@@ -1114,6 +1116,10 @@ class Highs {
   HighsInt debug_run_call_num_ = 0;
 
   bool written_log_header = false;
+
+  scipy::clbk_t scipy_clbk_ = +[](ipx::Info* info){
+    std::cout << info->iter << "\n";
+  };
 
   void exactResizeModel() {
     this->model_.lp_.exactResize();

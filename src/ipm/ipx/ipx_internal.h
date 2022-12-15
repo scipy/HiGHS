@@ -15,6 +15,7 @@ using Int = ipxint;
 
 struct Info : public ipx_info {
   Info() { std::memset(this, 0, sizeof(Info)); }
+
 };
 
 struct Parameters : public ipx_parameters {

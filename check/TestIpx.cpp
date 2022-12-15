@@ -52,7 +52,7 @@ TEST_CASE("test-ipx", "[highs_ipx]") {
 
   highs::parallel::initialize_scheduler();
 
-  Int status = lps.Solve();
+  Int status = lps.Solve(+[](ipx::Info*){});
   bool is_solved = status == IPX_STATUS_solved;
   REQUIRE(is_solved);
 
