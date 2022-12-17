@@ -18,6 +18,7 @@
 
 #include <cassert>
 
+#include "HighsClbk.h"
 #include "lp_data/HighsOptions.h"
 #include "lp_data/HighsSolution.h"
 
@@ -26,7 +27,8 @@ using std::min;
 HighsStatus solveLpIpx(HighsLpSolverObject& solver_object) {
   return solveLpIpx(solver_object.options_, solver_object.timer_, solver_object.lp_, 
                     solver_object.basis_, solver_object.solution_, 
-                    solver_object.model_status_, solver_object.highs_info_);
+                    solver_object.model_status_, solver_object.highs_info_,
+                    solver_object.clbk_fun_);
 }
 
 HighsStatus solveLpIpx(const HighsOptions& options,
@@ -35,7 +37,8 @@ HighsStatus solveLpIpx(const HighsOptions& options,
                        HighsBasis& highs_basis,
 		       HighsSolution& highs_solution,
                        HighsModelStatus& model_status,
-                       HighsInfo& highs_info) {
+                       HighsInfo& highs_info,
+                       HighsClbk clbk_fun) {
   // Use IPX to try to solve the LP
   //
   // Can return HighsModelStatus (HighsStatus) values:
@@ -90,6 +93,7 @@ HighsStatus solveLpIpx(const HighsOptions& options,
   } else if (options.log_dev_level == kHighsLogDevLevelVerbose) {
     parameters.debug = 4;
   }
+  parameters.clbk_fun = clbk_fun;
   // Just test feasibility and optimality tolerances for now
   // ToDo Set more parameters
   parameters.ipm_feasibility_tol = min(options.primal_feasibility_tolerance,

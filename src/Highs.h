@@ -18,6 +18,7 @@
 
 #include <sstream>
 
+#include "HighsClbk.h"
 #include "lp_data/HighsLpUtils.h"
 #include "lp_data/HighsRanging.h"
 #include "lp_data/HighsSolutionDebug.h"
@@ -1007,6 +1008,8 @@ class Highs {
   HighsStatus setHighsOptionValue(const std::string& option,
                                   const HighsInt value);
 
+  void setClbk(HighsClbk clbk_fun) { clbk_fun_ = clbk_fun; }
+
 #ifdef HIGHSINT64
   HighsStatus setHighsOptionValue(const std::string& option,
                                   const int value  //!< The option value
@@ -1114,6 +1117,8 @@ class Highs {
   HighsInt debug_run_call_num_ = 0;
 
   bool written_log_header = false;
+
+  HighsClbk clbk_fun_ = nullptr;
 
   void exactResizeModel() {
     this->model_.lp_.exactResize();

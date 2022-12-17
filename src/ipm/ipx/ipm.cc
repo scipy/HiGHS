@@ -39,7 +39,8 @@ void IPM::StartingPoint(KKTSolver* kkt, Iterate* iterate, Info* info) {
     }
 }
 
-void IPM::Driver(KKTSolver* kkt, Iterate* iterate, Info* info) {
+void IPM::Driver(KKTSolver* kkt, Iterate* iterate, Info* info,
+                 HighsClbk clbk_fun) {
     const Model& model = iterate->model();
     const Int m = model.rows();
     const Int n = model.cols();
@@ -75,6 +76,12 @@ void IPM::Driver(KKTSolver* kkt, Iterate* iterate, Info* info) {
             break;
         MakeStep(step);
         info->iter++;
+        if (clbk_fun) {
+            HighsClbkInfo clbk_info {
+                info->iter
+            };
+            clbk_fun(&clbk_info);
+        }
         PrintOutput();
     }
 

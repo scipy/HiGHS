@@ -4,6 +4,7 @@
 #include <cstring>
 #include <valarray>
 
+#include "HighsClbk.h"
 #include "ipm/ipx/ipx_config.h"
 #include "ipm/ipx/ipx_info.h"
 #include "ipm/ipx/ipx_parameters.h"
@@ -15,6 +16,7 @@ using Int = ipxint;
 
 struct Info : public ipx_info {
   Info() { std::memset(this, 0, sizeof(Info)); }
+
 };
 
 struct Parameters : public ipx_parameters {
@@ -23,6 +25,7 @@ struct Parameters : public ipx_parameters {
     logfile = nullptr;
     print_interval = 5.0;
     analyse_basis_data = false;
+    HighsClbk clbk_fun = nullptr;
     time_limit = -1.0;
     dualize = -1;
     scale = 1;

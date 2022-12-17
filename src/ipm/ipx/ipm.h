@@ -1,9 +1,10 @@
 #ifndef IPX_IPM_H_
 #define IPX_IPM_H_
 
+#include "HighsClbk.h"
 #include "ipm/ipx/control.h"
-#include "ipm/ipx/kkt_solver.h"
 #include "ipm/ipx/iterate.h"
+#include "ipm/ipx/kkt_solver.h"
 
 namespace ipx {
 
@@ -33,7 +34,8 @@ public:
     // IPX_STATUS_no_progress   if no progress over a number of iterations,
     // IPX_STATUS_time_limit    if interrupted by time limit,
     // IPX_STATUS_failed        if the KKT solver failed with info->errflag.
-    void Driver(KKTSolver* kkt, Iterate* iterate, Info* info);
+    void Driver(KKTSolver* kkt, Iterate* iterate, Info* info,
+                HighsClbk clbk_fun);
 
     Int maxiter() const { return maxiter_; }
     void maxiter(Int i) { maxiter_ = i; }

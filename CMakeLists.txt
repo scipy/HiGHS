@@ -7,11 +7,11 @@ cmake_minimum_required(VERSION 3.15)
 # set preference for clang compiler and intel compiler over gcc and other compilers
 include(Platform/${CMAKE_SYSTEM_NAME}-Determine-C OPTIONAL)
 include(Platform/${CMAKE_SYSTEM_NAME}-C OPTIONAL)
-set(CMAKE_C_COMPILER_NAMES clang icc cc ${CMAKE_C_COMPILER_NAMES})
+set(CMAKE_C_COMPILER_NAMES cc clang icc ${CMAKE_C_COMPILER_NAMES})
 
 include(Platform/${CMAKE_SYSTEM_NAME}-Determine-CXX OPTIONAL)
 include(Platform/${CMAKE_SYSTEM_NAME}-CXX OPTIONAL)
-set(CMAKE_CXX_COMPILER_NAMES clang++ icpc c++ ${CMAKE_CXX_COMPILER_NAMES})
+set(CMAKE_CXX_COMPILER_NAMES c++ clang++ icpc ${CMAKE_CXX_COMPILER_NAMES})
 
 # set default build type before project call, as it otherwise seems to fail for some plattforms
 if(NOT CMAKE_BUILD_TYPE)
