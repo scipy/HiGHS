@@ -18,6 +18,7 @@
 
 #include <cassert>
 
+#include "HighsClbk.h"
 #include "lp_data/HighsOptions.h"
 #include "lp_data/HighsSolution.h"
 
@@ -27,7 +28,7 @@ HighsStatus solveLpIpx(HighsLpSolverObject& solver_object) {
   return solveLpIpx(solver_object.options_, solver_object.timer_, solver_object.lp_, 
                     solver_object.basis_, solver_object.solution_, 
                     solver_object.model_status_, solver_object.highs_info_,
-                    solver_object.scipy_clbk_);
+                    solver_object.clbk_fun_);
 }
 
 HighsStatus solveLpIpx(const HighsOptions& options,
@@ -37,7 +38,7 @@ HighsStatus solveLpIpx(const HighsOptions& options,
 		       HighsSolution& highs_solution,
                        HighsModelStatus& model_status,
                        HighsInfo& highs_info,
-                       scipy::clbk_t scipy_clbk) {
+                       HighsClbk clbk_fun) {
   // Use IPX to try to solve the LP
   //
   // Can return HighsModelStatus (HighsStatus) values:
@@ -92,6 +93,7 @@ HighsStatus solveLpIpx(const HighsOptions& options,
   } else if (options.log_dev_level == kHighsLogDevLevelVerbose) {
     parameters.debug = 4;
   }
+  parameters.clbk_fun = clbk_fun;
   // Just test feasibility and optimality tolerances for now
   // ToDo Set more parameters
   parameters.ipm_feasibility_tol = min(options.primal_feasibility_tolerance,
@@ -143,7 +145,7 @@ HighsStatus solveLpIpx(const HighsOptions& options,
   }
 
   // Use IPX to solve the LP!
-  ipx::Int solve_status = lps.Solve(scipy_clbk);
+  ipx::Int solve_status = lps.Solve();
 
   const bool report_solve_data = kHighsAnalysisLevelSolverSummaryData & options.highs_analysis_level;
   // Get solver and solution information.

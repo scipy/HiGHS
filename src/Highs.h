@@ -18,14 +18,13 @@
 
 #include <sstream>
 
+#include "HighsClbk.h"
 #include "lp_data/HighsLpUtils.h"
 #include "lp_data/HighsRanging.h"
 #include "lp_data/HighsSolutionDebug.h"
 #include "model/HighsModel.h"
 #include "presolve/ICrash.h"
 #include "presolve/PresolveComponent.h"
-
-#include "scipy.h"
 
 /**
  * @brief Class to set parameters and run HiGHS
@@ -1117,8 +1116,8 @@ class Highs {
 
   bool written_log_header = false;
 
-  scipy::clbk_t scipy_clbk_ = +[](ipx::Info* info){
-    std::cout << info->iter << "\n";
+  HighsClbk clbk_fun_ = +[](HighsClbkInfo* info){
+      std::cout << "iteration: " << info->iteration_ << "\n";
   };
 
   void exactResizeModel() {

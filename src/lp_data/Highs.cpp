@@ -1429,7 +1429,7 @@ HighsStatus Highs::getRanging() {
   // class, and the scaled/unscaled model status
   HighsLpSolverObject solver_object(model_.lp_, basis_, solution_, info_,
                                     ekk_instance_, options_, timer_,
-                                    scipy_clbk_);
+                                    clbk_fun_);
   solver_object.model_status_ = model_status_;
   return getRangingData(this->ranging_, solver_object);
 }
@@ -1732,7 +1732,7 @@ HighsStatus Highs::setBasis(const HighsBasis& basis,
     modifiable_basis.was_alien = true;
     HighsLpSolverObject solver_object(model_.lp_, modifiable_basis, solution_,
                                       info_, ekk_instance_, options_, timer_,
-                                      scipy_clbk_);
+                                      clbk_fun_);
     HighsStatus return_status = formSimplexLpBasisAndFactor(solver_object);
     if (return_status != HighsStatus::kOk) return HighsStatus::kError;
     // Update the HiGHS basis
@@ -2754,7 +2754,7 @@ HighsStatus Highs::callSolveLp(HighsLp& lp, const string message) {
   // Create a HighsLpSolverObject of references to data in the Highs
   // class, and the scaled/unscaled model status
   HighsLpSolverObject solver_object(lp, basis_, solution_, info_, ekk_instance_,
-                                    options_, timer_, scipy_clbk_);
+                                    options_, timer_, clbk_fun_);
 
   // Check that the model is column-wise
   assert(model_.lp_.a_matrix_.isColwise());

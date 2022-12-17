@@ -30,7 +30,7 @@ HighsStatus solveLpIpx(const HighsOptions& options, HighsTimer& timer,
                        const HighsLp& lp, HighsBasis& highs_basis,
                        HighsSolution& highs_solution,
                        HighsModelStatus& model_status, HighsInfo& highs_info,
-                       scipy::clbk_t scipy_clbk);
+                       HighsClbk clbk_t);
 
 void fillInIpxData(const HighsLp& lp, ipx::Int& num_col, ipx::Int& num_row,
                    std::vector<double>& obj, std::vector<double>& col_lb,

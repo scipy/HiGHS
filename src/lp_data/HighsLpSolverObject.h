@@ -16,18 +16,17 @@
 #ifndef LP_DATA_HIGHS_LP_SOLVER_OBJECT_H_
 #define LP_DATA_HIGHS_LP_SOLVER_OBJECT_H_
 
+#include "HighsClbk.h"
 #include "lp_data/HighsInfo.h"
 #include "lp_data/HighsOptions.h"
 #include "simplex/HEkk.h"
-
-#include "scipy.h"
 
 class HighsLpSolverObject {
  public:
   HighsLpSolverObject(HighsLp& lp, HighsBasis& basis, HighsSolution& solution,
                       HighsInfo& highs_info, HEkk& ekk_instance,
                       HighsOptions& options, HighsTimer& timer,
-                      scipy::clbk_t scipy_clbk)
+                      HighsClbk clbk_fun)
       : lp_(lp),
         basis_(basis),
         solution_(solution),
@@ -35,7 +34,7 @@ class HighsLpSolverObject {
         ekk_instance_(ekk_instance),
         options_(options),
         timer_(timer),
-        scipy_clbk_(scipy_clbk) {}
+        clbk_fun_(clbk_fun) {}
 
   HighsLp& lp_;
   HighsBasis& basis_;
@@ -44,10 +43,9 @@ class HighsLpSolverObject {
   HEkk& ekk_instance_;
   HighsOptions& options_;
   HighsTimer& timer_;
+  HighsClbk clbk_fun_;
 
   HighsModelStatus model_status_ = HighsModelStatus::kNotset;
-
-  scipy::clbk_t scipy_clbk_;
 };
 
 #endif  // LP_DATA_HIGHS_LP_SOLVER_OBJECT_H_

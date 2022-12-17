@@ -47,7 +47,7 @@ Int LpSolver::LoadIPMStartingPoint(const double* x, const double* xl,
     return 0;
 }
 
-Int LpSolver::Solve(scipy::clbk_t scipy_clbk) {
+Int LpSolver::Solve() {
     if (model_.empty())
         return info_.status = IPX_STATUS_no_model;
     ClearSolution();
@@ -55,7 +55,7 @@ Int LpSolver::Solve(scipy::clbk_t scipy_clbk) {
     control_.OpenLogfile();
     control_.Log() << "IPX version 1.0\n";
     try {
-        InteriorPointSolve(scipy_clbk);
+        InteriorPointSolve();
 	const bool run_crossover_on = control_.run_crossover() == 1;
 	const bool run_crossover_choose = control_.run_crossover() == -1;
 	const bool run_crossover_not_off = run_crossover_choose || run_crossover_on;
@@ -346,7 +346,7 @@ void LpSolver::ClearSolution() {
 
 }
 
-void LpSolver::InteriorPointSolve(scipy::clbk_t scipy_clbk) {
+void LpSolver::InteriorPointSolve() {
     control_.Log() << "Interior Point Solve\n";
 
     // Allocate new iterate and set tolerances for IPM termination test.
@@ -356,7 +356,7 @@ void LpSolver::InteriorPointSolve(scipy::clbk_t scipy_clbk) {
     if (control_.run_crossover())
         iterate_->start_crossover_tol(control_.start_crossover_tol());
 
-    RunIPM(scipy_clbk);
+    RunIPM();
 
     iterate_->Postprocess();
     iterate_->EvaluatePostsolved(&info_);
@@ -371,7 +371,7 @@ void LpSolver::InteriorPointSolve(scipy::clbk_t scipy_clbk) {
     }
 }
 
-void LpSolver::RunIPM(scipy::clbk_t scipy_clbk) {
+void LpSolver::RunIPM() {
     IPM ipm(control_);
 
     if (x_start_.size() != 0) {
@@ -384,14 +384,14 @@ void LpSolver::RunIPM(scipy::clbk_t scipy_clbk) {
         ComputeStartingPoint(ipm);
         if (info_.status_ipm != IPX_STATUS_not_run)
             return;
-        RunInitialIPM(ipm, scipy_clbk);
+        RunInitialIPM(ipm);
         if (info_.status_ipm != IPX_STATUS_not_run)
             return;
     }
     BuildStartingBasis();
     if (info_.status_ipm != IPX_STATUS_not_run)
         return;
-    RunMainIPM(ipm, scipy_clbk);
+    RunMainIPM(ipm);
 }
 
 void LpSolver::MakeIPMStartingPointValid() {
@@ -460,7 +460,7 @@ void LpSolver::ComputeStartingPoint(IPM& ipm) {
     info_.time_ipm1 += timer.Elapsed();
 }
 
-void LpSolver::RunInitialIPM(IPM& ipm, scipy::clbk_t scipy_clbk) {
+void LpSolver::RunInitialIPM(IPM& ipm) {
     Timer timer;
     KKTSolverDiag kkt(control_, model_);
 
@@ -474,7 +474,7 @@ void LpSolver::RunInitialIPM(IPM& ipm, scipy::clbk_t scipy_clbk) {
     } else {
         ipm.maxiter(std::min(switchiter, control_.ipm_maxiter()));
     }
-    ipm.Driver(&kkt, iterate_.get(), &info_, scipy_clbk);
+    ipm.Driver(&kkt, iterate_.get(), &info_, GetParameters().clbk_fun);
     switch (info_.status_ipm) {
     case IPX_STATUS_optimal:
         // If the IPM reached its termination criterion in the initial
@@ -532,11 +532,11 @@ void LpSolver::BuildStartingBasis() {
     }
 }
 
-void LpSolver::RunMainIPM(IPM& ipm, scipy::clbk_t scipy_clbk) {
+void LpSolver::RunMainIPM(IPM& ipm) {
     KKTSolverBasis kkt(control_, *basis_);
     Timer timer;
     ipm.maxiter(control_.ipm_maxiter());
-    ipm.Driver(&kkt, iterate_.get(), &info_, scipy_clbk);
+    ipm.Driver(&kkt, iterate_.get(), &info_, GetParameters().clbk_fun);
     info_.time_ipm2 = timer.Elapsed();
 }
 

@@ -1,6 +1,7 @@
 #ifndef IPX_PARAMETERS_H_
 #define IPX_PARAMETERS_H_
 
+#include "HighsClbk.h"
 #include "ipm/ipx/ipx_config.h"
 
 #ifdef __cplusplus
@@ -13,6 +14,7 @@ struct ipx_parameters {
     double print_interval;
     double time_limit;
     bool analyse_basis_data;
+    HighsClbk clbk_fun;
 
     /* Preprocessing */
     ipxint dualize;

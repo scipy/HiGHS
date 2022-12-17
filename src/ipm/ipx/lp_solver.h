@@ -8,8 +8,6 @@
 #include "ipm/ipx/iterate.h"
 #include "ipm/ipx/model.h"
 
-#include "scipy.h"
-
 namespace ipx {
 
 class LpSolver {
@@ -70,7 +68,7 @@ public:
 
     // Solves the model that is currently loaded in the object.
     // Returns GetInfo().status.
-    Int Solve(scipy::clbk_t scipy_clbk);
+    Int Solve();
 
     // Returns the solver info from the last call to Solve(). See the reference
     // documentation for the meaning of Info values.
@@ -163,13 +161,13 @@ public:
 
 private:
     void ClearSolution();
-    void InteriorPointSolve(scipy::clbk_t scipy_clbk);
-    void RunIPM(scipy::clbk_t scipy_clbk);
+    void InteriorPointSolve();
+    void RunIPM();
     void MakeIPMStartingPointValid();
     void ComputeStartingPoint(IPM& ipm);
-    void RunInitialIPM(IPM& ipm, scipy::clbk_t scipy_clbk);
+    void RunInitialIPM(IPM& ipm);
     void BuildStartingBasis();
-    void RunMainIPM(IPM& ipm, scipy::clbk_t scipy_clbk);
+    void RunMainIPM(IPM& ipm);
     void BuildCrossoverStartingPoint();
     void RunCrossover();
     void PrintSummary();

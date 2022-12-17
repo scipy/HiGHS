@@ -77,7 +77,7 @@ ipxint ipx_load_ipm_starting_point(void* self, const double* x,
 
 ipxint ipx_solve(void* self) {
     LpSolver* solver = static_cast<LpSolver*>(self);
-    return solver->Solve(nullptr);
+    return solver->Solve();
 }
 
 struct ipx_info ipx_get_info(void* self) {

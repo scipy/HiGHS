@@ -1094,7 +1094,7 @@ HighsStatus Highs::getBasicVariablesInterface(HighsInt* basic_variables) {
     // Create a HighsLpSolverObject
     HighsLpSolverObject solver_object(lp, basis_, solution_, info_,
                                       ekk_instance_, options_, timer_,
-                                      scipy_clbk_);
+                                      clbk_fun_);
     const bool only_from_known_basis = true;
     return_status = interpretCallStatus(
         options_.log_options,
