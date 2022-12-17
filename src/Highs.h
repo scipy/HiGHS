@@ -1008,11 +1008,7 @@ class Highs {
   HighsStatus setHighsOptionValue(const std::string& option,
                                   const HighsInt value);
 
-  void setClbk(HighsClbk clbk_fun) {
-    clbk_fun_ = +[](HighsClbkInfo* info){
-      std::cout << "iteration: " << info->iteration_ << "\n";
-    };
-  }
+  void setClbk(HighsClbk clbk_fun) { clbk_fun_ = clbk_fun; }
 
 #ifdef HIGHSINT64
   HighsStatus setHighsOptionValue(const std::string& option,
