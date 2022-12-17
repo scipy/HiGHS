@@ -1,7 +1,3 @@
-//
-// Created by nmckibben on 12/14/22.
-//
-
 #ifndef HIGHS_HIGHSCLBK_H
 #define HIGHS_HIGHSCLBK_H
 

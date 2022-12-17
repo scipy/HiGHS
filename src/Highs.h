@@ -1008,6 +1008,12 @@ class Highs {
   HighsStatus setHighsOptionValue(const std::string& option,
                                   const HighsInt value);
 
+  void setClbk(HighsClbk clbk_fun) {
+    clbk_fun_ = +[](HighsClbkInfo* info){
+      std::cout << "iteration: " << info->iteration_ << "\n";
+    };
+  }
+
 #ifdef HIGHSINT64
   HighsStatus setHighsOptionValue(const std::string& option,
                                   const int value  //!< The option value
@@ -1116,9 +1122,7 @@ class Highs {
 
   bool written_log_header = false;
 
-  HighsClbk clbk_fun_ = +[](HighsClbkInfo* info){
-      std::cout << "iteration: " << info->iteration_ << "\n";
-  };
+  HighsClbk clbk_fun_ = nullptr;
 
   void exactResizeModel() {
     this->model_.lp_.exactResize();
