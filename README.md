@@ -1,6 +1,8 @@
 # HiGHS - Linear optimization software
 
 [![Build Status](https://github.com/ERGO-Code/HiGHS/workflows/build/badge.svg)](https://github.com/ERGO-Code/HiGHS/actions?query=workflow%3Abuild+branch%3Amaster)
+[![PyPi](https://img.shields.io/pypi/v/highspy.svg)](https://pypi.python.org/pypi/highspy)
+[![PyPi](https://img.shields.io/pypi/dm/highspy.svg)](https://pypi.python.org/pypi/highspy)
 
 HiGHS is a high performance serial and parallel solver for large scale sparse
 linear optimization problems of the form
@@ -113,13 +115,13 @@ Usage:
       --write_model_file arg  File for writing out model.
       --random_seed arg       Seed to initialize random number generation.
       --ranging arg           Compute cost, bound, RHS and basic solution ranging.
-      --read_solution_file    File of solution to be read 
+      --read_solution_file    File of solution to be read
       
-  -h, --help                 Print help.
+      --version               Print version number      
+  -h, --help                  Print help.
   
   Note:
   
-  * If the file constrains some variables to take integer values (so the problem is a MIP) and "simplex" or "ipm" is selected for the solver option, then the integrality constraint will be ignored.
   * If the file defines a quadratic term in the objective (so the problem is a QP or MIQP) and "simplex" or "ipm" is selected for the solver option, then the quadratic term will be ignored.
   * If the file constrains some variables to take integer values and defines a quadratic term in the objective, then the problem is MIQP and cannot be solved by HiGHS
 
