@@ -36,8 +36,6 @@ class HighsTaskExecutor {
   };
 
  private:
-  using cache_aligned = highs::cache_aligned;
-
 #ifdef _WIN32
   static HighsSplitDeque*& threadLocalWorkerDeque();
   static ExecutorHandle& threadLocalExecutorHandle();
