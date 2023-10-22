@@ -2,12 +2,10 @@
 /*                                                                       */
 /*    This file is part of the HiGHS linear optimization suite           */
 /*                                                                       */
-/*    Written and engineered 2008-2022 at the University of Edinburgh    */
+/*    Written and engineered 2008-2023 by Julian Hall, Ivet Galabova,    */
+/*    Leona Gottwald and Michael Feldmeier                               */
 /*                                                                       */
 /*    Available as open-source under the MIT License                     */
-/*                                                                       */
-/*    Authors: Julian Hall, Ivet Galabova, Leona Gottwald and Michael    */
-/*    Feldmeier                                                          */
 /*                                                                       */
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 /**@file simplex/HEkkPrimal.cpp
@@ -99,7 +97,7 @@ HighsStatus HEkkPrimal::solve(const bool pass_force_phase2) {
 
   // Check whether the time/iteration limit has been reached. First
   // point at which a non-error return can occur
-  if (ekk_instance_.bailoutOnTimeIterations())
+  if (ekk_instance_.bailout())
     return ekk_instance_.returnFromSolve(HighsStatus::kWarning);
 
   // Now to do some iterations!
@@ -112,7 +110,7 @@ HighsStatus HEkkPrimal::solve(const bool pass_force_phase2) {
     // removed by flips for and fixed variables shifts for the rest
     solve_phase = kSolvePhase2;
     if (!pass_force_phase2) {
-      const bool local_report = true;
+      const bool local_report = false;  // true;
       if (!primal_feasible_with_unperturbed_bounds && local_report) {
         printf(
             "Solve %d: Forcing phase 2 since near primal feasible with "
@@ -365,7 +363,7 @@ void HEkkPrimal::initialiseInstance() {
                 num_free_col);
     nonbasic_free_col_set.setup(
         num_free_col, num_tot, ekk_instance_.options_->output_flag,
-        ekk_instance_.options_->log_options.log_file_stream, debug);
+        ekk_instance_.options_->log_options.log_stream, debug);
   }
   // Set up the hyper-sparse CHUZC data
   hyper_chuzc_candidate.resize(1 + max_num_hyper_chuzc_candidates);
@@ -373,7 +371,7 @@ void HEkkPrimal::initialiseInstance() {
   hyper_chuzc_candidate_set.setup(
       max_num_hyper_chuzc_candidates, num_tot,
       ekk_instance_.options_->output_flag,
-      ekk_instance_.options_->log_options.log_file_stream, debug);
+      ekk_instance_.options_->log_options.log_stream, debug);
 }
 
 void HEkkPrimal::initialiseSolve() {
@@ -432,7 +430,7 @@ void HEkkPrimal::solvePhase1() {
   status.has_primal_objective_value = false;
   status.has_dual_objective_value = false;
   // Possibly bail out immediately if iteration limit is current value
-  if (ekk_instance_.bailoutOnTimeIterations()) return;
+  if (ekk_instance_.bailout()) return;
   highsLogDev(ekk_instance_.options_->log_options, HighsLogType::kDetailed,
               "primal-phase1-start\n");
   // If there's no backtracking basis, save the initial basis in case of
@@ -448,7 +446,7 @@ void HEkkPrimal::solvePhase1() {
     rebuild();
     if (solve_phase == kSolvePhaseError) return;
     if (solve_phase == kSolvePhaseUnknown) return;
-    if (ekk_instance_.bailoutOnTimeIterations()) return;
+    if (ekk_instance_.bailout()) return;
     assert(solve_phase == kSolvePhase1 || solve_phase == kSolvePhase2);
     //
     // solve_phase = kSolvePhase2 is set if no primal infeasibilities
@@ -457,7 +455,7 @@ void HEkkPrimal::solvePhase1() {
 
     for (;;) {
       iterate();
-      if (ekk_instance_.bailoutOnTimeIterations()) return;
+      if (ekk_instance_.bailout()) return;
       if (solve_phase == kSolvePhaseError) return;
       assert(solve_phase == kSolvePhase1);
       if (rebuild_reason) break;
@@ -523,7 +521,7 @@ void HEkkPrimal::solvePhase2() {
   status.has_primal_objective_value = false;
   status.has_dual_objective_value = false;
   // Possibly bail out immediately if iteration limit is current value
-  if (ekk_instance_.bailoutOnTimeIterations()) return;
+  if (ekk_instance_.bailout()) return;
   highsLogDev(options.log_options, HighsLogType::kDetailed,
               "primal-phase2-start\n");
   phase2UpdatePrimal(true);
@@ -542,7 +540,7 @@ void HEkkPrimal::solvePhase2() {
     rebuild();
     if (solve_phase == kSolvePhaseError) return;
     if (solve_phase == kSolvePhaseUnknown) return;
-    if (ekk_instance_.bailoutOnTimeIterations()) return;
+    if (ekk_instance_.bailout()) return;
     assert(solve_phase == kSolvePhase1 || solve_phase == kSolvePhase2);
     //
     // solve_phase = kSolvePhase1 is set if primal infeasibilities
@@ -551,7 +549,7 @@ void HEkkPrimal::solvePhase2() {
 
     for (;;) {
       iterate();
-      if (ekk_instance_.bailoutOnTimeIterations()) return;
+      if (ekk_instance_.bailout()) return;
       if (solve_phase == kSolvePhaseError) return;
       assert(solve_phase == kSolvePhase2);
       if (rebuild_reason) break;
@@ -735,7 +733,7 @@ void HEkkPrimal::rebuild() {
     assert(info.backtracking_);
     ekk_instance_.initialisePartitionedRowwiseMatrix();
     assert(ekk_instance_.ar_matrix_.debugPartitionOk(
-        &ekk_instance_.basis_.nonbasicFlag_[0]));
+        ekk_instance_.basis_.nonbasicFlag_.data()));
   }
 
   if (info.backtracking_) {
@@ -747,7 +745,9 @@ void HEkkPrimal::rebuild() {
   ekk_instance_.computePrimal();
   if (solve_phase == kSolvePhase2) {
     bool correct_primal_ok = correctPrimal();
-    assert(correct_primal_ok);
+    if (kAllowDeveloperAssert) {
+      assert(correct_primal_ok);
+    }
   }
   getBasicPrimalInfeasibility();
   if (info.num_primal_infeasibilities > 0) {
@@ -2102,7 +2102,9 @@ bool HEkkPrimal::correctPrimal(const bool initialise) {
     highsLogDev(ekk_instance_.options_->log_options, HighsLogType::kError,
                 "correctPrimal: Missed %d bound shifts\n",
                 num_primal_correction_skipped);
-    assert(!num_primal_correction_skipped);
+    if (kAllowDeveloperAssert) {
+      assert(!num_primal_correction_skipped);
+    }
     return false;
   }
   if (max_primal_correction > 2 * max_max_primal_correction) {
@@ -2471,7 +2473,7 @@ void HEkkPrimal::updateDualSteepestEdgeWeights() {
   const double Kai = -2 / pivot_in_scaled_space;
   ekk_instance_.updateDualSteepestEdgeWeights(row_out, variable_in, &col_aq,
                                               new_pivotal_edge_weight, Kai,
-                                              &col_steepest_edge.array[0]);
+                                              col_steepest_edge.array.data());
   edge_weight[row_out] = new_pivotal_edge_weight;
 }
 
@@ -2543,7 +2545,9 @@ void HEkkPrimal::updateVerify() {
                 ekk_instance_.iteration_count_, alpha_col,
                 alpha_row_source.c_str(), alpha_row, abs_alpha_diff,
                 numericalTrouble);
-  assert(numericalTrouble < 1e-3);
+  if (kAllowDeveloperAssert) {
+    assert(numericalTrouble < 1e-3);
+  }
   // Reinvert if the relative difference is large enough, and updates have been
   // performed
   //

@@ -1,3 +1,4 @@
+#include "HCheckConfig.h"
 #include "Highs.h"
 #include "catch.hpp"
 
@@ -221,11 +222,7 @@ void testSolvers(Highs& highs, IterationCount& model_iteration_count,
     model_iteration_count.simplex = simplex_strategy_iteration_count[i];
     testSolver(highs, "simplex", model_iteration_count, i);
   }
-  // Only use IPX with 32-bit arithmetic
-  // ToDo This is no longer true
-#ifndef HIGHSINT64
   testSolver(highs, "ipm", model_iteration_count);
-#endif
 }
 
 // No commas in test case name.
@@ -296,6 +293,20 @@ TEST_CASE("LP-solver", "[highs_lp_solver]") {
   REQUIRE(return_status == HighsStatus::kOk);
 
   REQUIRE(info.simplex_iteration_count == 621);  // 584);  //
+}
+
+TEST_CASE("mip-with-lp-solver", "[highs_lp_solver]") {
+  // When solving the relaxation of a MIP. Exposed #1406
+  HighsStatus status;
+  Highs highs;
+  highs.setOptionValue("output_flag", dev_run);
+  std::string filename =
+      std::string(HIGHS_DIR) + "/check/instances/small_mip.mps";
+  status = highs.readModel(filename);
+  REQUIRE(status == HighsStatus::kOk);
+  highs.setOptionValue("solver", kIpmString);
+  status = highs.run();
+  REQUIRE(status == HighsStatus::kOk);
 }
 
 TEST_CASE("dual-objective-upper-bound", "[highs_lp_solver]") {

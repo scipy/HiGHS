@@ -6,6 +6,8 @@ add_library(Catch INTERFACE)
 target_include_directories(Catch INTERFACE ${CATCH_INCLUDE_DIR})
 target_include_directories(Catch INTERFACE ${HIGHS_SOURCE_DIR}/src)
 
+configure_file(${HIGHS_SOURCE_DIR}/check/HCheckConfig.h.in ${HIGHS_BINARY_DIR}/HCheckConfig.h)
+
 FILE(WRITE ${CMAKE_BINARY_DIR}/testoptions.txt
 "mip_rel_gap=0.0
 mip_abs_gap=0.0")
@@ -14,13 +16,15 @@ mip_abs_gap=0.0")
 set(TEST_SOURCES
     TestHighsVersion.cpp
     TestAlienBasis.cpp
-    TestDualise.cpp
+    TestDualize.cpp
+    TestCallbacks.cpp
     TestCheckSolution.cpp
     TestEkk.cpp
     TestFactor.cpp
     TestFreezeBasis.cpp
     TestHotStart.cpp
     TestMain.cpp
+    TestNames.cpp
     TestOptions.cpp
     TestIO.cpp
     TestSort.cpp
@@ -37,6 +41,7 @@ set(TEST_SOURCES
     TestHighsRbTree.cpp
     TestHighsHessian.cpp
     TestHighsModel.cpp
+    TestHighsSparseMatrix.cpp
     TestHSet.cpp
     TestICrash.cpp
     TestLogging.cpp
@@ -69,24 +74,16 @@ if (UNIX)
 endif()
 target_link_libraries(unit_tests libhighs Catch)
 
-if (OSI_FOUND AND BUILD_TESTING)
-    pkg_check_modules(OSITEST osi-unittests)
-    if (OSITEST_FOUND)
-        include_directories(${HIGHS_SOURCE_DIR}/src)
-	add_executable(osi_unit_tests TestOsi.cpp)
-	target_link_libraries(osi_unit_tests OsiHighs Catch ${OSITEST_LIBRARIES} CoinUtils)
-	target_include_directories(osi_unit_tests PUBLIC ${OSITEST_INCLUDE_DIRS} ${HIGHS_SOURCE_DIR}/src/interfaces)
-	target_compile_options(osi_unit_tests PUBLIC ${OSITEST_CFLAGS_OTHER})
-    endif (OSITEST_FOUND)
-endif()
-
 if(FORTRAN_FOUND)
    set(CMAKE_Fortran_MODULE_DIRECTORY ${HIGHS_BINARY_DIR}/modules)
    include_directories(${HIGHS_SOURCE_DIR}/src)
    add_executable(fortrantest TestFortranAPI.f90)
-   target_link_libraries(fortrantest libhighs FortranHighs)
+   if (NOT FAST_BUILD)
+       target_link_libraries(fortrantest libhighs FortranHighs)
+    else()
+       target_link_libraries(fortrantest highs FortranHighs)
+    endif()
    target_include_directories(fortrantest PUBLIC ${HIGHS_SOURCE_DIR}/src/interfaces)
- else()
  endif(FORTRAN_FOUND)
 
 # check the C API
@@ -113,40 +110,7 @@ add_test(NAME unit_tests_all COMMAND unit_tests --success)
 set_tests_properties(unit_tests_all
                     PROPERTIES
                     DEPENDS unit-test-build)
-
-if (OSITEST_FOUND)
-
-add_test(NAME osi-unit-test-build
-         COMMAND ${CMAKE_COMMAND}
-                 --build ${HIGHS_BINARY_DIR}
-                 --target osi_unit_tests
-                 --config ${CMAKE_BUILD_TYPE}
-         )
-
-# Avoid that several build jobs try to concurretly build.
-set_tests_properties(osi-unit-test-build
-PROPERTIES
-RESOURCE_LOCK osiunittestbin)
-
-pkg_search_module(COINSAMPLE coindatasample)
-if (COINSAMPLE_FOUND)
-   pkg_get_variable(COINSAMPLEDIR coindatasample datadir)
-endif ()
-
-pkg_search_module(COINNETLIB coindatanetlib)
-if (COINNETLIB_FOUND)
-   pkg_get_variable(COINNETLIBDIR coindatanetlib datadir)
-endif ()
-
-configure_file(${HIGHS_SOURCE_DIR}/check/HCheckConfig.h.in ${HIGHS_BINARY_DIR}/HCheckConfig.h)
-
-# create a binary running all the tests in the executable
-add_test(NAME osi_unit_tests_all COMMAND osi_unit_tests)
-set_tests_properties(osi_unit_tests_all
-PROPERTIES
-DEPENDS osi-unit-test-build)
-
-endif()
+set_tests_properties(unit_tests_all PROPERTIES TIMEOUT 10000) 
 
 # An individual test can be added with the command below but the approach
 # above with a single add_test for all the unit tests automatically detects all
@@ -238,7 +202,7 @@ foreach(instance ${${instances}})
     endif()
 
     # specify the instance and the settings load command
-    if(ZLIB_FOUND AND EXISTS "${HIGHS_SOURCE_DIR}/check/instances/${name}.mps.gz")
+    if(ZLIB AND ZLIB_FOUND AND EXISTS "${HIGHS_SOURCE_DIR}/check/instances/${name}.mps.gz")
       set(inst "${HIGHS_SOURCE_DIR}/check/instances/${name}.mps.gz")
     else()
       set(inst "${HIGHS_SOURCE_DIR}/check/instances/${name}.mps")

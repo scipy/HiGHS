@@ -1,4 +1,9 @@
-#################
+### Meson ###
+# subproject directories
+/subprojects/*
+!/subprojects/*.wrap
+
+# #################
 ## Eclipse
 #################
 
@@ -243,7 +248,7 @@ pip-log.txt
 #SCIP interface
 lpi_highs.cpp
 
-src/interfaces/highspy/highspy/highs_bindings.*.so
+highspy/highs_bindings.*.so
 
 # Model written with HiGHSDEV=on
 HighsRunModel.mps
@@ -266,3 +271,6 @@ qjh.mps
 
 *.whl
 bazel*
+
+# webdemo
+build_webdemo

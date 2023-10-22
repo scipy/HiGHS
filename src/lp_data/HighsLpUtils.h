@@ -2,12 +2,10 @@
 /*                                                                       */
 /*    This file is part of the HiGHS linear optimization suite           */
 /*                                                                       */
-/*    Written and engineered 2008-2022 at the University of Edinburgh    */
+/*    Written and engineered 2008-2023 by Julian Hall, Ivet Galabova,    */
+/*    Leona Gottwald and Michael Feldmeier                               */
 /*                                                                       */
 /*    Available as open-source under the MIT License                     */
-/*                                                                       */
-/*    Authors: Julian Hall, Ivet Galabova, Leona Gottwald and Michael    */
-/*    Feldmeier                                                          */
 /*                                                                       */
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 /**@file lp_data/HighsLpUtils.h
@@ -47,23 +45,28 @@ bool lpDimensionsOk(std::string message, const HighsLp& lp,
 
 HighsStatus assessCosts(const HighsOptions& options, const HighsInt ml_col_os,
                         const HighsIndexCollection& index_collection,
-                        vector<double>& cost, const double infinite_cost);
+                        vector<double>& cost, bool& has_infinite_cost,
+                        const double infinite_cost);
 
 HighsStatus assessBounds(const HighsOptions& options, const char* type,
                          const HighsInt ml_ix_os,
                          const HighsIndexCollection& index_collection,
                          vector<double>& lower, vector<double>& upper,
-                         const double infinite_bound);
+                         const double infinite_bound,
+                         const HighsVarType* integrality = nullptr);
 
 HighsStatus cleanBounds(const HighsOptions& options, HighsLp& lp);
 
-HighsStatus assessIntegrality(HighsLp& lp, const HighsOptions& options);
-void relaxSemiVariables(HighsLp& lp);
+HighsStatus assessSemiVariables(HighsLp& lp, const HighsOptions& options,
+                                bool& made_semi_variable_mods);
+void relaxSemiVariables(HighsLp& lp, bool& made_semi_variable_mods);
+
 bool activeModifiedUpperBounds(const HighsOptions& options, const HighsLp& lp,
                                const std::vector<double> col_value);
 
 bool considerScaling(const HighsOptions& options, HighsLp& lp);
-void scaleLp(const HighsOptions& options, HighsLp& lp);
+void scaleLp(const HighsOptions& options, HighsLp& lp,
+             const bool force_scaling = false);
 bool equilibrationScaleMatrix(const HighsOptions& options, HighsLp& lp,
                               const HighsInt use_scale_strategy);
 bool maxValueScaleMatrix(const HighsOptions& options, HighsLp& lp,
@@ -106,7 +109,8 @@ void changeLpIntegrality(HighsLp& lp,
                          const vector<HighsVarType>& new_integrality);
 
 void changeLpCosts(HighsLp& lp, const HighsIndexCollection& index_collection,
-                   const vector<double>& new_col_cost);
+                   const vector<double>& new_col_cost,
+                   const double infinite_cost);
 
 void changeLpColBounds(HighsLp& lp,
                        const HighsIndexCollection& index_collection,
@@ -217,6 +221,11 @@ bool readSolutionFileIdDoubleLineOk(double& value, std::ifstream& in_file);
 bool readSolutionFileIdDoubleIntLineOk(double& value, HighsInt& index,
                                        std::ifstream& in_file);
 
+void assessColPrimalSolution(const HighsOptions& options, const double primal,
+                             const double lower, const double upper,
+                             const HighsVarType type, double& col_infeasibility,
+                             double& integer_infeasibility);
+
 HighsStatus assessLpPrimalSolution(const HighsOptions& options,
                                    const HighsLp& lp,
                                    const HighsSolution& solution, bool& valid,
@@ -226,7 +235,8 @@ HighsStatus calculateRowValues(const HighsLp& lp,
                                const std::vector<double>& col_value,
                                std::vector<double>& row_value);
 HighsStatus calculateRowValues(const HighsLp& lp, HighsSolution& solution);
-HighsStatus calculateRowValuesQuad(const HighsLp& lp, HighsSolution& solution);
+HighsStatus calculateRowValuesQuad(const HighsLp& lp, HighsSolution& solution,
+                                   const HighsInt report_row = -1);
 HighsStatus calculateColDuals(const HighsLp& lp, HighsSolution& solution);
 
 bool isBoundInfeasible(const HighsLogOptions& log_options, const HighsLp& lp);

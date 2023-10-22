@@ -2,19 +2,18 @@
 /*                                                                       */
 /*    This file is part of the HiGHS linear optimization suite           */
 /*                                                                       */
-/*    Written and engineered 2008-2022 at the University of Edinburgh    */
+/*    Written and engineered 2008-2023 by Julian Hall, Ivet Galabova,    */
+/*    Leona Gottwald and Michael Feldmeier                               */
 /*                                                                       */
 /*    Available as open-source under the MIT License                     */
-/*                                                                       */
-/*    Authors: Julian Hall, Ivet Galabova, Leona Gottwald and Michael    */
-/*    Feldmeier                                                          */
 /*                                                                       */
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 #include "mip/HighsMipSolverData.h"
 
 #include <random>
 
-#include "lp_data/HighsLpUtils.h"
+// #include "lp_data/HighsLpUtils.h"
+#include "lp_data/HighsModelUtils.h"
 #include "mip/HighsPseudocost.h"
 #include "mip/HighsRedcostFixing.h"
 #include "parallel/HighsParallel.h"
@@ -403,6 +402,7 @@ void HighsMipSolverData::runPresolve() {
   presolve::HPresolve presolve;
   presolve.setInput(mipsolver);
   mipsolver.modelstatus_ = presolve.run(postSolveStack);
+  presolve_status = presolve.getPresolveStatus();
   mipsolver.timer_.stop(mipsolver.timer_.presolve_clock);
 
 #ifdef HIGHS_DEBUGSOL
@@ -445,6 +445,7 @@ void HighsMipSolverData::runSetup() {
     if (feasible && solobj < upper_bound) {
       upper_bound = solobj;
       double new_upper_limit = computeNewUpperLimit(solobj, 0.0, 0.0);
+      saveReportMipSolution(new_upper_limit);
       if (new_upper_limit < upper_limit) {
         upper_limit = new_upper_limit;
         optimality_limit =
@@ -662,11 +663,16 @@ double HighsMipSolverData::transformNewIncumbent(
     const std::vector<double>& sol) {
   HighsSolution solution;
   solution.col_value = sol;
-  calculateRowValuesQuad(*mipsolver.orig_model_, solution);
   solution.value_valid = true;
-
+  // Perform primal postsolve to get the original column values
   postSolveStack.undoPrimal(*mipsolver.options_mip_, solution);
-  calculateRowValuesQuad(*mipsolver.orig_model_, solution);
+  // Determine the row values, as they aren't computed in primal
+  // postsolve
+  HighsInt first_check_row =
+      -1;  // mipsolver.mipdata_->presolve.debugGetCheckRow();
+  HighsStatus return_status =
+      calculateRowValuesQuad(*mipsolver.orig_model_, solution, first_check_row);
+  if (kAllowDeveloperAssert) assert(return_status == HighsStatus::kOk);
   bool allow_try_again = true;
 try_again:
 
@@ -675,17 +681,35 @@ try_again:
   double row_violation_ = 0;
   double integrality_violation_ = 0;
 
+  // obj is the actual objective of the MIP - including the offset,
+  // and independent of objective sense
+  //
+  // ToDO Give it a more meaningful name!
   HighsCDouble obj = mipsolver.orig_model_->offset_;
-  assert((HighsInt)solution.col_value.size() ==
-         mipsolver.orig_model_->num_col_);
+  if (kAllowDeveloperAssert)
+    assert((HighsInt)solution.col_value.size() ==
+           mipsolver.orig_model_->num_col_);
+  HighsInt check_col = -1;
+  HighsInt check_int = -1;
+  HighsInt check_row = -1;
+  const bool debug_report = false;
   for (HighsInt i = 0; i != mipsolver.orig_model_->num_col_; ++i) {
     const double value = solution.col_value[i];
     obj += mipsolver.orig_model_->col_cost_[i] * value;
 
     if (mipsolver.orig_model_->integrality_[i] == HighsVarType::kInteger) {
       double intval = std::floor(value + 0.5);
+      double integrality_infeasibility = std::fabs(intval - value);
+      if (integrality_infeasibility >
+          mipsolver.options_mip_->mip_feasibility_tolerance) {
+        if (debug_report)
+          printf("Col %d[%s] value %g has integrality infeasibility %g\n",
+                 int(i), mipsolver.orig_model_->col_names_[i].c_str(), value,
+                 integrality_infeasibility);
+        check_int = i;
+      }
       integrality_violation_ =
-          std::max(std::fabs(intval - value), integrality_violation_);
+          std::max(integrality_infeasibility, integrality_violation_);
     }
 
     const double lower = mipsolver.orig_model_->col_lower_[i];
@@ -698,7 +722,14 @@ try_again:
       primal_infeasibility = value - upper;
     } else
       continue;
-
+    if (primal_infeasibility >
+        mipsolver.options_mip_->primal_feasibility_tolerance) {
+      if (debug_report)
+        printf("Col %d[%s] [%g, %g, %g] has infeasibility %g\n", int(i),
+               mipsolver.orig_model_->col_names_[i].c_str(), lower, value,
+               upper, primal_infeasibility);
+      check_col = i;
+    }
     bound_violation_ = std::max(bound_violation_, primal_infeasibility);
   }
 
@@ -714,7 +745,14 @@ try_again:
       primal_infeasibility = value - upper;
     } else
       continue;
-
+    if (primal_infeasibility >
+        mipsolver.options_mip_->primal_feasibility_tolerance) {
+      if (debug_report)
+        printf("Row %d[%s] [%g, %g, %g] has infeasibility %g\n", int(i),
+               mipsolver.orig_model_->row_names_[i].c_str(), lower, value,
+               upper, primal_infeasibility);
+      check_row = i;
+    }
     row_violation_ = std::max(row_violation_, primal_infeasibility);
   }
 
@@ -747,7 +785,7 @@ try_again:
     tmpSolver.passModel(std::move(fixedModel));
     tmpSolver.run();
 
-    if (tmpSolver.getInfo().primal_solution_status == 2) {
+    if (tmpSolver.getInfo().primal_solution_status == kSolutionStatusFeasible) {
       solution = tmpSolver.getSolution();
       allow_try_again = false;
       goto try_again;
@@ -773,12 +811,51 @@ try_again:
             mipsolver.options_mip_->mip_feasibility_tolerance &&
         mipsolver.row_violation_ <=
             mipsolver.options_mip_->mip_feasibility_tolerance;
-    highsLogUser(
-        mipsolver.options_mip_->log_options, HighsLogType::kWarning,
-        "Untransformed solution with objective %g is violated by %.12g for the "
-        "original model\n",
-        double(obj),
-        std::max({bound_violation_, integrality_violation_, row_violation_}));
+    //    check_col = 37;//mipsolver.mipdata_->presolve.debugGetCheckCol();
+    //    check_row = 37;//mipsolver.mipdata_->presolve.debugGetCheckRow();
+    std::string check_col_data = "";
+    if (check_col >= 0) {
+      check_col_data = " (col " + std::to_string(check_col);
+      if (mipsolver.orig_model_->col_names_.size())
+        check_col_data +=
+            "[" + mipsolver.orig_model_->col_names_[check_col] + "]";
+      check_col_data += ")";
+    }
+    std::string check_int_data = "";
+    if (check_int >= 0) {
+      check_int_data = " (col " + std::to_string(check_int);
+      if (mipsolver.orig_model_->col_names_.size())
+        check_int_data +=
+            "[" + mipsolver.orig_model_->col_names_[check_int] + "]";
+      check_int_data += ")";
+    }
+    std::string check_row_data = "";
+    if (check_row >= 0) {
+      check_row_data = " (row " + std::to_string(check_row);
+      if (mipsolver.orig_model_->row_names_.size())
+        check_row_data +=
+            "[" + mipsolver.orig_model_->row_names_[check_row] + "]";
+      check_row_data += ")";
+    }
+    highsLogUser(mipsolver.options_mip_->log_options, HighsLogType::kWarning,
+                 //    printf(
+                 "Solution with objective %g has untransformed violations: "
+                 "bound = %.4g%s; integrality = %.4g%s; row = %.4g%s\n",
+                 double(obj), bound_violation_, check_col_data.c_str(),
+                 integrality_violation_, check_int_data.c_str(), row_violation_,
+                 check_row_data.c_str());
+
+    const bool debug_repeat = false;  // true;//
+    if (debug_repeat) {
+      HighsSolution check_solution;
+      check_solution.col_value = sol;
+      check_solution.value_valid = true;
+      postSolveStack.undoPrimal(*mipsolver.options_mip_, check_solution,
+                                check_col);
+      fflush(stdout);
+      if (kAllowDeveloperAssert) assert(111 == 999);
+    }
+
     if (!currentFeasible) {
       // if the current incumbent is non existent or also not feasible we still
       // store the new one
@@ -936,6 +1013,7 @@ bool HighsMipSolverData::addIncumbent(const std::vector<double>& sol,
     incumbent = sol;
     double new_upper_limit = computeNewUpperLimit(solobj, 0.0, 0.0);
 
+    if (!mipsolver.submip) saveReportMipSolution(new_upper_limit);
     if (new_upper_limit < upper_limit) {
       ++numImprovingSols;
       upper_limit = new_upper_limit;
@@ -967,9 +1045,9 @@ bool HighsMipSolverData::addIncumbent(const std::vector<double>& sol,
   return true;
 }
 
-static std::array<char, 16> convertToPrintString(int64_t val) {
+static std::array<char, 22> convertToPrintString(int64_t val) {
   double l = std::log10(std::max(1.0, double(val)));
-  std::array<char, 16> printString;
+  std::array<char, 22> printString;
   switch (int(l)) {
     case 0:
     case 1:
@@ -977,23 +1055,23 @@ static std::array<char, 16> convertToPrintString(int64_t val) {
     case 3:
     case 4:
     case 5:
-      std::snprintf(printString.data(), 16, "%" PRId64, val);
+      std::snprintf(printString.data(), 22, "%" PRId64, val);
       break;
     case 6:
     case 7:
     case 8:
-      std::snprintf(printString.data(), 16, "%" PRId64 "k", val / 1000);
+      std::snprintf(printString.data(), 22, "%" PRId64 "k", val / 1000);
       break;
     default:
-      std::snprintf(printString.data(), 16, "%" PRId64 "m", val / 1000000);
+      std::snprintf(printString.data(), 22, "%" PRId64 "m", val / 1000000);
   }
 
   return printString;
 }
 
-static std::array<char, 16> convertToPrintString(double val,
+static std::array<char, 22> convertToPrintString(double val,
                                                  const char* trailingStr = "") {
-  std::array<char, 16> printString;
+  std::array<char, 22> printString;
   double l = std::abs(val) == kHighsInf
                  ? 0.0
                  : std::log10(std::max(1e-6, std::abs(val)));
@@ -1002,35 +1080,48 @@ static std::array<char, 16> convertToPrintString(double val,
     case 1:
     case 2:
     case 3:
-      std::snprintf(printString.data(), 16, "%.10g%s", val, trailingStr);
+      std::snprintf(printString.data(), 22, "%.10g%s", val, trailingStr);
       break;
     case 4:
-      std::snprintf(printString.data(), 16, "%.11g%s", val, trailingStr);
+      std::snprintf(printString.data(), 22, "%.11g%s", val, trailingStr);
       break;
     case 5:
-      std::snprintf(printString.data(), 16, "%.12g%s", val, trailingStr);
+      std::snprintf(printString.data(), 22, "%.12g%s", val, trailingStr);
       break;
     case 6:
     case 7:
     case 8:
     case 9:
     case 10:
-      std::snprintf(printString.data(), 16, "%.13g%s", val, trailingStr);
+      std::snprintf(printString.data(), 22, "%.13g%s", val, trailingStr);
       break;
     default:
-      std::snprintf(printString.data(), 16, "%.9g%s", val, trailingStr);
+      std::snprintf(printString.data(), 22, "%.9g%s", val, trailingStr);
   }
 
   return printString;
 }
 
 void HighsMipSolverData::printDisplayLine(char first) {
-  double time = mipsolver.timer_.read(mipsolver.timer_.solve_clock);
-  if (first == ' ' && time - last_disptime < 5.) return;
+  // MIP logging method
+  //
+  // Note that if the original problem is a maximization, the cost
+  // coefficients are ngated so that the MIP solver only solves a
+  // minimization. Hence, in preparing to print the display line, the
+  // dual bound (lb) is always less than the primal bound (ub). When
+  // printed, the sense of the optimizaiton is applied so that the
+  // values printed correspond to the original objective.
 
+  // No point in computing all the logging values if logging is off
+  bool output_flag = *mipsolver.options_mip_->log_options.output_flag;
+  if (!output_flag) return;
+
+  double time = mipsolver.timer_.read(mipsolver.timer_.solve_clock);
+  if (first == ' ' &&
+      time - last_disptime < mipsolver.options_mip_->mip_min_logging_interval)
+    return;
   last_disptime = time;
 
-  double offset = mipsolver.model_->offset_;
   if (num_disp_lines % 20 == 0) {
     highsLogUser(
         mipsolver.options_mip_->log_options, HighsLogType::kInfo,
@@ -1048,20 +1139,21 @@ void HighsMipSolverData::printDisplayLine(char first) {
 
   ++num_disp_lines;
 
-  std::array<char, 16> print_nodes = convertToPrintString(num_nodes);
-  std::array<char, 16> queue_nodes =
+  std::array<char, 22> print_nodes = convertToPrintString(num_nodes);
+  std::array<char, 22> queue_nodes =
       convertToPrintString(nodequeue.numActiveNodes());
-  std::array<char, 16> print_leaves =
+  std::array<char, 22> print_leaves =
       convertToPrintString(num_leaves - num_leaves_before_run);
 
   double explored = 100 * double(pruned_treeweight);
 
+  double offset = mipsolver.model_->offset_;
   double lb = lower_bound + offset;
   if (std::abs(lb) <= epsilon) lb = 0;
   double ub = kHighsInf;
   double gap = kHighsInf;
 
-  std::array<char, 16> print_lp_iters =
+  std::array<char, 22> print_lp_iters =
       convertToPrintString(total_lp_iterations);
   if (upper_bound != kHighsInf) {
     ub = upper_bound + offset;
@@ -1073,13 +1165,13 @@ void HighsMipSolverData::printDisplayLine(char first) {
     else
       gap = 100. * (ub - lb) / fabs(ub);
 
-    std::array<char, 16> gap_string;
+    std::array<char, 22> gap_string;
     if (gap >= 9999.)
       std::strcpy(gap_string.data(), "Large");
     else
       std::snprintf(gap_string.data(), gap_string.size(), "%.2f%%", gap);
 
-    std::array<char, 16> ub_string;
+    std::array<char, 22> ub_string;
     if (mipsolver.options_mip_->objective_bound < ub) {
       ub = mipsolver.options_mip_->objective_bound;
       ub_string =
@@ -1087,7 +1179,7 @@ void HighsMipSolverData::printDisplayLine(char first) {
     } else
       ub_string = convertToPrintString((int)mipsolver.orig_model_->sense_ * ub);
 
-    std::array<char, 16> lb_string =
+    std::array<char, 22> lb_string =
         convertToPrintString((int)mipsolver.orig_model_->sense_ * lb);
 
     highsLogUser(
@@ -1100,7 +1192,7 @@ void HighsMipSolverData::printDisplayLine(char first) {
         cutpool.getNumCuts(), lp.numRows() - lp.getNumModelRows(),
         conflictPool.getNumConflicts(), print_lp_iters.data(), time);
   } else {
-    std::array<char, 16> ub_string;
+    std::array<char, 22> ub_string;
     if (mipsolver.options_mip_->objective_bound < ub) {
       ub = mipsolver.options_mip_->objective_bound;
       ub_string =
@@ -1108,7 +1200,7 @@ void HighsMipSolverData::printDisplayLine(char first) {
     } else
       ub_string = convertToPrintString((int)mipsolver.orig_model_->sense_ * ub);
 
-    std::array<char, 16> lb_string =
+    std::array<char, 22> lb_string =
         convertToPrintString((int)mipsolver.orig_model_->sense_ * lb);
 
     highsLogUser(
@@ -1121,6 +1213,21 @@ void HighsMipSolverData::printDisplayLine(char first) {
         lp.numRows() - lp.getNumModelRows(), conflictPool.getNumConflicts(),
         print_lp_iters.data(), time);
   }
+  // Check that limitsToBounds yields the same values for the
+  // dual_bound, primal_bound (modulo optimization sense) and
+  // mip_rel_gap
+  double dual_bound;
+  double primal_bound;
+  double mip_rel_gap;
+  limitsToBounds(dual_bound, primal_bound, mip_rel_gap);
+  assert(dual_bound == (int)mipsolver.orig_model_->sense_ * lb);
+  assert(primal_bound == (int)mipsolver.orig_model_->sense_ * ub);
+  assert(mip_rel_gap == gap);
+  // Possibly interrupt from MIP logging callback
+  mipsolver.callback_->clearHighsCallbackDataOut();
+  const bool interrupt =
+      interruptFromCallbackWithData(kCallbackMipLogging, "MIP logging");
+  assert(!interrupt);
 }
 
 bool HighsMipSolverData::rootSeparationRound(
@@ -1587,20 +1694,65 @@ restart:
 bool HighsMipSolverData::checkLimits(int64_t nodeOffset) const {
   const HighsOptions& options = *mipsolver.options_mip_;
 
+  // Possible user interrupt
+  if (!mipsolver.submip && mipsolver.callback_->user_callback) {
+    mipsolver.callback_->clearHighsCallbackDataOut();
+    if (interruptFromCallbackWithData(kCallbackMipInterrupt,
+                                      "MIP check limits")) {
+      if (mipsolver.modelstatus_ == HighsModelStatus::kNotset) {
+        highsLogDev(options.log_options, HighsLogType::kInfo,
+                    "User interrupt\n");
+        mipsolver.modelstatus_ = HighsModelStatus::kInterrupt;
+      }
+      return true;
+    }
+  }
+  // Possible termination due to objective being at least as good as
+  // the target value
+  if (!mipsolver.submip && mipsolver.solution_objective_ < kHighsInf &&
+      options.objective_target > -kHighsInf) {
+    // Note:
+    //
+    // Whether the sense is ObjSense::kMinimize or
+    // ObjSense::kMaximize, the undefined value of
+    // mipsolver.solution_objective_ is kHighsInf, and the default
+    // target value is -kHighsInf, so had to rule out these cases in
+    // the conditional statement above.
+    //
+    // mipsolver.solution_objective_ is the actual objective of the
+    // MIP - including the offset, and independent of objective sense
+    //
+    // The target is reached if the objective is below (above) the
+    // target value when minimizing (maximizing).
+    const int int_sense = int(this->mipsolver.orig_model_->sense_);
+    const bool reached_objective_target =
+        int_sense * mipsolver.solution_objective_ <
+        int_sense * options.objective_target;
+    if (reached_objective_target) {
+      if (mipsolver.modelstatus_ == HighsModelStatus::kNotset) {
+        highsLogDev(options.log_options, HighsLogType::kInfo,
+                    "Reached objective target\n");
+        mipsolver.modelstatus_ = HighsModelStatus::kObjectiveTarget;
+      }
+      return true;
+    }
+  }
+
   if (options.mip_max_nodes != kHighsIInf &&
       num_nodes + nodeOffset >= options.mip_max_nodes) {
     if (mipsolver.modelstatus_ == HighsModelStatus::kNotset) {
       highsLogDev(options.log_options, HighsLogType::kInfo,
-                  "reached node limit\n");
+                  "Reached node limit\n");
       mipsolver.modelstatus_ = HighsModelStatus::kSolutionLimit;
     }
     return true;
   }
+
   if (options.mip_max_leaves != kHighsIInf &&
       num_leaves >= options.mip_max_leaves) {
     if (mipsolver.modelstatus_ == HighsModelStatus::kNotset) {
       highsLogDev(options.log_options, HighsLogType::kInfo,
-                  "reached leaf node limit\n");
+                  "Reached leaf node limit\n");
       mipsolver.modelstatus_ = HighsModelStatus::kSolutionLimit;
     }
     return true;
@@ -1610,7 +1762,7 @@ bool HighsMipSolverData::checkLimits(int64_t nodeOffset) const {
       numImprovingSols >= options.mip_max_improving_sols) {
     if (mipsolver.modelstatus_ == HighsModelStatus::kNotset) {
       highsLogDev(options.log_options, HighsLogType::kInfo,
-                  "reached improving solution limit\n");
+                  "Reached improving solution limit\n");
       mipsolver.modelstatus_ = HighsModelStatus::kSolutionLimit;
     }
     return true;
@@ -1620,7 +1772,7 @@ bool HighsMipSolverData::checkLimits(int64_t nodeOffset) const {
       options.time_limit) {
     if (mipsolver.modelstatus_ == HighsModelStatus::kNotset) {
       highsLogDev(options.log_options, HighsLogType::kInfo,
-                  "reached time limit\n");
+                  "Reached time limit\n");
       mipsolver.modelstatus_ = HighsModelStatus::kTimeLimit;
     }
     return true;
@@ -1661,4 +1813,98 @@ void HighsMipSolverData::setupDomainPropagation() {
 
   domain = HighsDomain(mipsolver);
   domain.computeRowActivities();
+}
+
+void HighsMipSolverData::saveReportMipSolution(const double new_upper_limit) {
+  const bool non_improving = new_upper_limit >= upper_limit;
+  if (mipsolver.submip) return;
+  if (non_improving) return;
+
+  /*
+  printf(
+      "%7s dimension(%d, %d) "
+      "%4simproving solution: numImprovingSols = %4d; Limits (%11.4g, "
+      "%11.4g); Objective = %11.4g\n",
+      mipsolver.submip ? "Sub-MIP" : "MIP    ", mipsolver.model_->num_col_,
+      mipsolver.model_->num_row_, non_improving ? "non-" : "",
+      int(numImprovingSols), new_upper_limit, upper_limit,
+      mipsolver.solution_objective_);
+  */
+  if (mipsolver.callback_->user_callback) {
+    if (mipsolver.callback_->active[kCallbackMipImprovingSolution]) {
+      mipsolver.callback_->clearHighsCallbackDataOut();
+      mipsolver.callback_->data_out.objective_function_value =
+          mipsolver.solution_objective_;
+      mipsolver.callback_->data_out.mip_solution = mipsolver.solution_.data();
+      const bool interrupt = interruptFromCallbackWithData(
+          kCallbackMipImprovingSolution, "Improving solution");
+      assert(!interrupt);
+    }
+  }
+
+  if (mipsolver.options_mip_->mip_improving_solution_save) {
+    HighsObjectiveSolution record;
+    record.objective = mipsolver.solution_objective_;
+    record.col_value = mipsolver.solution_;
+    mipsolver.saved_objective_and_solution_.push_back(record);
+  }
+  FILE* file = mipsolver.improving_solution_file_;
+  if (file) {
+    writeLpObjective(file, *(mipsolver.orig_model_), mipsolver.solution_);
+    writePrimalSolution(
+        file, *(mipsolver.orig_model_), mipsolver.solution_,
+        mipsolver.options_mip_->mip_improving_solution_report_sparse);
+  }
+}
+
+void HighsMipSolverData::limitsToBounds(double& dual_bound,
+                                        double& primal_bound,
+                                        double& mip_rel_gap) const {
+  const HighsLp* model = this->mipsolver.model_;
+  const HighsLp* orig_model = this->mipsolver.orig_model_;
+
+  const double offset = model->offset_;
+  dual_bound = lower_bound + offset;
+  if (std::abs(dual_bound) <= epsilon) dual_bound = 0;
+  primal_bound = kHighsInf;
+  mip_rel_gap = kHighsInf;
+
+  if (upper_bound != kHighsInf) {
+    primal_bound = upper_bound + offset;
+
+    if (std::fabs(primal_bound) <= epsilon) primal_bound = 0;
+    dual_bound = std::min(dual_bound, primal_bound);
+    if (primal_bound == 0.0)
+      mip_rel_gap = dual_bound == 0.0 ? 0.0 : kHighsInf;
+    else
+      mip_rel_gap = 100. * (primal_bound - dual_bound) / fabs(primal_bound);
+  }
+  primal_bound =
+      std::min(mipsolver.options_mip_->objective_bound, primal_bound);
+
+  // Adjust objective sense in case of maximization problem
+  if (orig_model->sense_ == ObjSense::kMaximize) {
+    dual_bound = -dual_bound;
+    primal_bound = -primal_bound;
+  }
+}
+
+bool HighsMipSolverData::interruptFromCallbackWithData(
+    const int callback_type, const std::string message) const {
+  if (!mipsolver.callback_->callbackActive(callback_type)) return false;
+  assert(!mipsolver.submip);
+
+  double dual_bound;
+  double primal_bound;
+  double mip_rel_gap;
+  limitsToBounds(dual_bound, primal_bound, mip_rel_gap);
+  mipsolver.callback_->data_out.running_time =
+      mipsolver.timer_.read(mipsolver.timer_.solve_clock);
+  mipsolver.callback_->data_out.objective_function_value =
+      mipsolver.solution_objective_;
+  mipsolver.callback_->data_out.mip_node_count = mipsolver.mipdata_->num_nodes;
+  mipsolver.callback_->data_out.mip_primal_bound = primal_bound;
+  mipsolver.callback_->data_out.mip_dual_bound = dual_bound;
+  mipsolver.callback_->data_out.mip_gap = mip_rel_gap;
+  return mipsolver.callback_->callbackAction(callback_type, message);
 }

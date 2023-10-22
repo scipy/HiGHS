@@ -2,12 +2,10 @@
 /*                                                                       */
 /*    This file is part of the HiGHS linear optimization suite           */
 /*                                                                       */
-/*    Written and engineered 2008-2022 at the University of Edinburgh    */
+/*    Written and engineered 2008-2023 by Julian Hall, Ivet Galabova,    */
+/*    Leona Gottwald and Michael Feldmeier                               */
 /*                                                                       */
 /*    Available as open-source under the MIT License                     */
-/*                                                                       */
-/*    Authors: Julian Hall, Ivet Galabova, Leona Gottwald and Michael    */
-/*    Feldmeier                                                          */
 /*                                                                       */
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 /**@file lp_data/HConst.h
@@ -23,8 +21,9 @@
 #include "util/HighsInt.h"
 
 const std::string kHighsCopyrightStatement =
-    "Copyright (c) 2022 HiGHS under MIT licence terms";
+    "Copyright (c) 2023 HiGHS under MIT licence terms";
 
+const size_t kHighsSize_tInf = std::numeric_limits<size_t>::max();
 const HighsInt kHighsIInf = std::numeric_limits<HighsInt>::max();
 const double kHighsInf = std::numeric_limits<double>::infinity();
 const double kHighsTiny = 1e-14;
@@ -33,10 +32,14 @@ const double kHighsZero = 1e-50;
 const std::string kHighsOffString = "off";
 const std::string kHighsChooseString = "choose";
 const std::string kHighsOnString = "on";
+const HighsInt kHighsMaxStringLength = 512;
 const HighsInt kSimplexConcurrencyLimit = 8;
 const double kRunningAverageMultiplier = 0.05;
 
+const bool kAllowDeveloperAssert = false;
 const bool kExtendInvertWhenAddingRows = false;
+
+enum class HighsLogType { kInfo = 1, kDetailed, kVerbose, kWarning, kError };
 
 enum SimplexScaleStrategy {
   kSimplexScaleStrategyMin = 0,
@@ -102,6 +105,16 @@ enum OptionOffChooseOn {
   kHighsOptionOn
 };
 
+enum IpxDualizeStrategy {
+  kIpxDualizeStrategyOff = kHighsOptionOff,
+  kIpxDualizeStrategyChoose = kHighsOptionChoose,
+  kIpxDualizeStrategyOn = kHighsOptionOn,
+  kIpxDualizeStrategyLukas,
+  kIpxDualizeStrategyFilippo,
+  kIpxDualizeStrategyMin = kIpxDualizeStrategyOff,
+  kIpxDualizeStrategyMax = kIpxDualizeStrategyFilippo,
+};
+
 /** SCIP/HiGHS Objective sense */
 enum class ObjSense { kMinimize = 1, kMaximize = -1 };
 
@@ -144,9 +157,6 @@ enum GlpsolCostRowLocation {
 
 const std::string kHighsFilenameDefault = "";
 
-// Need to allow infinite costs to pass SCIP LPI unit tests
-const bool kHighsAllowInfiniteCosts = true;
-
 enum class HighsPresolveStatus {
   kNotPresolved = -1,
   kNotReduced,
@@ -155,8 +165,16 @@ enum class HighsPresolveStatus {
   kReduced,
   kReducedToEmpty,
   kTimeout,
-  kNullError,
-  kOptionsError,
+  kNullError,     // V2.0: Delete since it's not used!
+  kOptionsError,  // V2.0: Delete since it's not used!
+  kNotSet,
+};
+
+enum class HighsPostsolveStatus {  // V2.0: Delete if not used!
+  kNotPresolved = -1,
+  kNoPrimalSolutionError,
+  kSolutionRecovered,
+  kBasisError
 };
 
 enum class HighsModelStatus {
@@ -164,11 +182,11 @@ enum class HighsModelStatus {
   // values is unchanged, since enums are not preserved in some
   // interfaces
   kNotset = 0,
-  kLoadError,
+  kLoadError,  // V2.0: Delete since it's not used!
   kModelError,
-  kPresolveError,
+  kPresolveError,  // V2.0: Delete since it's not used!
   kSolveError,
-  kPostsolveError,
+  kPostsolveError,  // V2.0: Delete if not used! Add to documentation if used
   kModelEmpty,
   kOptimal,
   kInfeasible,
@@ -178,12 +196,26 @@ enum class HighsModelStatus {
   kObjectiveTarget,
   kTimeLimit,
   kIterationLimit,
-  // V2.0: flip kUnknown and kSolutionLimit - and then modify kMax and
-  // highs_c_api.h, highs_csharp_api.cs, highspy/highs_bindings.cpp
+  // V2.0: put kUnknown after kSolutionLimit and kInterrupt - and then
+  // modify kMax and highs_c_api.h, highs_csharp_api.cs,
+  // highspy/highs_bindings.cpp
   kUnknown,
   kSolutionLimit,
+  kInterrupt,
   kMin = kNotset,
-  kMax = kSolutionLimit
+  kMax = kInterrupt
+};
+
+enum HighsCallbackType : int {
+  kCallbackMin = 0,
+  kCallbackLogging = kCallbackMin,
+  kCallbackSimplexInterrupt,
+  kCallbackIpmInterrupt,
+  kCallbackMipImprovingSolution,
+  kCallbackMipLogging,
+  kCallbackMipInterrupt,
+  kCallbackMax = kCallbackMipInterrupt,
+  kNumCallbackType
 };
 
 /** SCIP/CPLEX-like HiGHS basis status for columns and rows. */
@@ -192,7 +224,7 @@ enum class HighsBasisStatus : uint8_t {
       0,   // (slack) variable is at its lower bound [including fixed variables]
   kBasic,  // (slack) variable is basic
   kUpper,  // (slack) variable is at its upper bound
-  kZero,   // free variable is non-basic and set to zero
+  kZero,   // free variable is nonbasic and set to zero
   kNonbasic  // nonbasic with no specific bound information - useful for users
              // and postsolve
 };
@@ -238,6 +270,12 @@ const HighsInt kHighsIllegalErrorIndex = -1;
 
 // Maximum upper bound on semi-variables
 const double kMaxSemiVariableUpper = 1e5;
+
+// Limit on primal values being realistic
+const double kExcessivePrimalValue = 1e25;
+
+// Hash marker for duplicates
+const HighsInt kHashIsDuplicate = -1;
 
 // Tolerance values for highsDoubleToString
 const double kModelValueToStringTolerance = 1e-15;

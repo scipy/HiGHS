@@ -1,3 +1,4 @@
+#include "HCheckConfig.h"
 #include "Highs.h"
 #include "catch.hpp"
 #include "lp_data/HConst.h"
@@ -30,7 +31,9 @@ TEST_CASE("semi-variable-model", "[highs_test_semi_variables]") {
   lp.col_upper_[semi_col] = inf;
   return_status = highs.passModel(model);
   REQUIRE(return_status == HighsStatus::kOk);
+
   REQUIRE(highs.run() == HighsStatus::kOk);
+  REQUIRE(!highs.getLp().hasMods());
   REQUIRE(highs.getModelStatus() == HighsModelStatus::kOptimal);
   if (dev_run) highs.writeSolution("", kSolutionStylePretty);
   REQUIRE(fabs(info.objective_function_value -
@@ -39,6 +42,7 @@ TEST_CASE("semi-variable-model", "[highs_test_semi_variables]") {
   // Remove the semi-condition and resolve - not the same as relaxation
   highs.changeColIntegrality(semi_col, continuous);
   REQUIRE(highs.run() == HighsStatus::kOk);
+  REQUIRE(!highs.getLp().hasMods());
   if (dev_run) highs.writeSolution("", kSolutionStylePretty);
   optimal_objective_function_value = 3.93333;
   REQUIRE(fabs(info.objective_function_value -
@@ -48,6 +52,7 @@ TEST_CASE("semi-variable-model", "[highs_test_semi_variables]") {
   highs.changeColIntegrality(semi_col, semi_continuous);
   highs.changeColCost(semi_col, -0.1);
   REQUIRE(highs.run() == HighsStatus::kOk);
+  REQUIRE(!highs.getLp().hasMods());
   if (dev_run) highs.writeSolution("", kSolutionStylePretty);
   optimal_objective_function_value = 8.22333;
   REQUIRE(fabs(info.objective_function_value -
@@ -56,15 +61,17 @@ TEST_CASE("semi-variable-model", "[highs_test_semi_variables]") {
   // Fix the variable at zero and resolve
   highs.changeColBounds(semi_col, 0, 0);
   REQUIRE(highs.run() == HighsStatus::kOk);
+  REQUIRE(!highs.getLp().hasMods());
   if (dev_run) highs.writeSolution("", kSolutionStylePretty);
   optimal_objective_function_value = 6.83333;
   REQUIRE(fabs(info.objective_function_value -
                optimal_objective_function_value) < double_equal_tolerance);
 
-  // Change to sem-integer, restore the bounds and resolve
+  // Change to semi-integer, restore the bounds and resolve
   highs.changeColIntegrality(semi_col, semi_integer);
   highs.changeColBounds(semi_col, semi_col_lower, semi_col_upper);
   REQUIRE(highs.run() == HighsStatus::kOk);
+  REQUIRE(!highs.getLp().hasMods());
   if (dev_run) highs.writeSolution("", kSolutionStylePretty);
   optimal_objective_function_value = 8.13333;
   REQUIRE(fabs(info.objective_function_value -
@@ -75,9 +82,9 @@ TEST_CASE("semi-variable-model", "[highs_test_semi_variables]") {
   sol.col_value = {0, 0, 0.5, 0};
   highs.setSolution(sol);
   REQUIRE(highs.run() == HighsStatus::kOk);
+  REQUIRE(!highs.getLp().hasMods());
   REQUIRE(fabs(info.objective_function_value -
                optimal_objective_function_value) < double_equal_tolerance);
-  //
 }
 
 TEST_CASE("semi-variable-lower-bound", "[highs_test_semi_variables]") {
@@ -170,7 +177,8 @@ TEST_CASE("semi-variable-upper-bound", "[highs_test_semi_variables]") {
   double coeff = 1e6;
   std::vector<HighsInt> index = {0, 1};
   std::vector<double> value = {-1, coeff};
-  REQUIRE(highs.addRow(0, 0, 2, &index[0], &value[0]) == HighsStatus::kOk);
+  REQUIRE(highs.addRow(0, 0, 2, index.data(), value.data()) ==
+          HighsStatus::kOk);
   // Problem is no longer unbounded due to equation linking the
   // semi-variable to the continuous variable. However, optimal value
   // of semi-variable should be 1e6, so it is active at the modified upper
@@ -231,6 +239,64 @@ TEST_CASE("semi-variable-file", "[highs_test_semi_variables]") {
   REQUIRE(highs.run() == HighsStatus::kOk);
   REQUIRE(fabs(info.objective_function_value -
                optimal_objective_function_value) < double_equal_tolerance);
+}
+
+TEST_CASE("semi-variable-inconsistent-bounds", "[highs_test_semi_variables]") {
+  HighsLp lp;
+  lp.num_col_ = 1;
+  lp.num_row_ = 0;
+  lp.col_cost_ = {1};
+  lp.col_lower_ = {1};
+  lp.col_upper_ = {-1};
+  lp.a_matrix_.start_ = {0, 0};
+  lp.integrality_ = {semi_continuous};
+  Highs highs;
+  highs.setOptionValue("output_flag", dev_run);
+  highs.passModel(lp);
+  highs.run();
+  REQUIRE(highs.getModelStatus() == HighsModelStatus::kOptimal);
+  REQUIRE(highs.getSolution().col_value[0] == 0);
+  // Ensure that inconsistent bounds with negative lower are still
+  // accepted
+  lp.col_lower_[0] = -1;
+  lp.col_upper_[0] = -2;
+  highs.passModel(lp);
+  highs.run();
+  REQUIRE(highs.getModelStatus() == HighsModelStatus::kOptimal);
+  REQUIRE(highs.getSolution().col_value[0] == 0);
+  // Ensure that continuous variables with inconsistent bounds yield
+  // infeasibility
+  highs.setOptionValue("solve_relaxation", true);
+  highs.passModel(lp);
+  highs.run();
+  REQUIRE(highs.getModelStatus() == HighsModelStatus::kInfeasible);
+}
+
+TEST_CASE("semi-variable-inf-upper", "[highs_test_semi_variables]") {
+  // Introduced due to a semi-variable possibly having an infinite
+  // upper bound that needs to be written to MPS in order to define
+  // variable type
+  Highs highs;
+  highs.setOptionValue("output_flag", dev_run);
+  HighsModel model;
+  HighsLp& lp = model.lp_;
+  semiModel0(lp);
+  highs.passModel(lp);
+  highs.run();
+  const double obj0 = highs.getObjectiveValue();
+  if (dev_run) printf("Optimum at first run: %g\n", obj0);
+
+  // now write out to MPS and load again
+  const std::string test_mps = "test.mps";
+  highs.writeModel(test_mps);
+  highs.readModel(test_mps);
+  highs.run();
+  const double obj1 = highs.getObjectiveValue();
+  if (dev_run)
+    printf("Optimum at second run (after writing and loading again): %g\n",
+           obj1);
+  REQUIRE(obj0 == obj1);
+  std::remove(test_mps.c_str());
 }
 
 void semiModel0(HighsLp& lp) {

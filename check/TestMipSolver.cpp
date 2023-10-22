@@ -1,3 +1,4 @@
+#include "HCheckConfig.h"
 #include "Highs.h"
 #include "SpecialLps.h"
 #include "catch.hpp"
@@ -89,9 +90,9 @@ TEST_CASE("MIP-integrality", "[highs_test_mip_solver]") {
     mask[iCol] = 1;
     integrality[ix] = HighsVarType::kInteger;
   }
-  REQUIRE(highs.changeColsIntegrality(from_col0, to_col0, &integrality[0]) ==
+  REQUIRE(highs.changeColsIntegrality(from_col0, to_col0, integrality.data()) ==
           HighsStatus::kOk);
-  REQUIRE(highs.changeColsIntegrality(from_col1, to_col1, &integrality[0]) ==
+  REQUIRE(highs.changeColsIntegrality(from_col1, to_col1, integrality.data()) ==
           HighsStatus::kOk);
   if (dev_run) {
     highs.setOptionValue("log_dev_level", 3);
@@ -122,8 +123,8 @@ TEST_CASE("MIP-integrality", "[highs_test_mip_solver]") {
   highs.clearModel();
   if (!dev_run) highs.setOptionValue("output_flag", false);
   highs.readModel(filename);
-  REQUIRE(highs.changeColsIntegrality(num_set_entries, &set[0],
-                                      &integrality[0]) == HighsStatus::kOk);
+  REQUIRE(highs.changeColsIntegrality(num_set_entries, set.data(),
+                                      integrality.data()) == HighsStatus::kOk);
   if (dev_run) highs.writeModel("");
   highs.run();
   if (dev_run) highs.writeSolution("", kSolutionStylePretty);
@@ -138,7 +139,7 @@ TEST_CASE("MIP-integrality", "[highs_test_mip_solver]") {
   highs.clearModel();
   if (!dev_run) highs.setOptionValue("output_flag", false);
   highs.readModel(filename);
-  REQUIRE(highs.changeColsIntegrality(&mask[0], &integrality[0]) ==
+  REQUIRE(highs.changeColsIntegrality(mask.data(), integrality.data()) ==
           HighsStatus::kOk);
   if (dev_run) highs.writeModel("");
   highs.run();
@@ -485,6 +486,88 @@ TEST_CASE("MIP-infeasible-start", "[highs_test_mip_solver]") {
           HighsStatus::kOk);
   highs.run();
   REQUIRE(model_status == HighsModelStatus::kInfeasible);
+}
+
+TEST_CASE("get-integrality", "[highs_test_mip_solver]") {}
+
+TEST_CASE("MIP-bounds", "[highs_test_mip_solver]") {
+  // Introduced due to #1325 observing that LI and UI are needed
+  HighsLp lp;
+  lp.num_col_ = 6;
+  lp.num_row_ = 3;
+  lp.col_cost_ = {1, 1, 1, 2, 2, 2};
+  lp.col_lower_ = {0, 0, 0, 0, 0, 0};
+  lp.col_upper_ = {kHighsInf, kHighsInf, kHighsInf,
+                   kHighsInf, kHighsInf, kHighsInf};
+  lp.integrality_ = {HighsVarType::kInteger,    HighsVarType::kInteger,
+                     HighsVarType::kInteger,    HighsVarType::kContinuous,
+                     HighsVarType::kContinuous, HighsVarType::kContinuous};
+  const double rhs = 10.99;
+  lp.row_lower_ = {rhs, rhs, rhs};
+  lp.row_upper_ = {kHighsInf, kHighsInf, kHighsInf};
+  lp.a_matrix_.format_ = MatrixFormat::kColwise;
+  lp.a_matrix_.num_col_ = lp.num_col_;
+  lp.a_matrix_.num_row_ = lp.num_row_;
+  lp.a_matrix_.start_ = {0, 1, 2, 3, 4, 5, 6};
+  lp.a_matrix_.index_ = {0, 1, 2, 0, 1, 2};
+  lp.a_matrix_.value_ = {1, 1, 1, 1, 1, 1};
+  Highs highs;
+  highs.setOptionValue("output_flag", dev_run);
+  highs.passModel(lp);
+  highs.run();
+  const double obj0 = highs.getObjectiveValue();
+  if (dev_run) printf("Optimum at first run: %g\n", obj0);
+  // now write out to MPS and load again
+  const std::string test_mps = "test.mps";
+  highs.writeModel(test_mps);
+  highs.readModel(test_mps);
+  highs.run();
+  const double obj1 = highs.getObjectiveValue();
+  if (dev_run)
+    printf("Optimum at second run (after writing and loading again): %g\n",
+           obj1);
+  REQUIRE(obj0 == obj1);
+  std::remove(test_mps.c_str());
+}
+
+TEST_CASE("MIP-get-saved-solutions", "[highs_test_mip_solver]") {
+  const std::string model = "flugpl";
+  const std::string solution_file = "MipImproving.sol";
+  const std::string model_file =
+      std::string(HIGHS_DIR) + "/check/instances/" + model + ".mps";
+  Highs highs;
+  highs.setOptionValue("output_flag", dev_run);
+  highs.setOptionValue("presolve", kHighsOffString);
+  highs.setOptionValue("mip_improving_solution_save", true);
+  highs.setOptionValue("mip_improving_solution_report_sparse", true);
+  highs.setOptionValue("mip_improving_solution_file", solution_file);
+  highs.readModel(model_file);
+  highs.run();
+  const std::vector<HighsObjectiveSolution> saved_objective_and_solution =
+      highs.getSavedMipSolutions();
+  const HighsInt num_saved_solution = saved_objective_and_solution.size();
+  REQUIRE(num_saved_solution == 3);
+  const HighsInt last_saved_solution = num_saved_solution - 1;
+  REQUIRE(saved_objective_and_solution[last_saved_solution].objective ==
+          highs.getInfo().objective_function_value);
+  for (HighsInt iCol = 0; iCol < highs.getLp().num_col_; iCol++)
+    REQUIRE(saved_objective_and_solution[last_saved_solution].col_value[iCol] ==
+            highs.getSolution().col_value[iCol]);
+  std::remove(solution_file.c_str());
+}
+
+TEST_CASE("MIP-objective-target", "[highs_test_mip_solver]") {
+  const double egout_optimal_objective = 568.1007;
+  const double egout_objective_target = 610;
+  std::string filename = std::string(HIGHS_DIR) + "/check/instances/egout.mps";
+  Highs highs;
+  highs.setOptionValue("output_flag", dev_run);
+  highs.setOptionValue("presolve", kHighsOffString);
+  highs.setOptionValue("objective_target", egout_objective_target);
+  highs.readModel(filename);
+  highs.run();
+  REQUIRE(highs.getModelStatus() == HighsModelStatus::kObjectiveTarget);
+  REQUIRE(highs.getInfo().objective_function_value > egout_optimal_objective);
 }
 
 bool objectiveOk(const double optimal_objective,

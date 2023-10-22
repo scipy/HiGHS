@@ -2,12 +2,10 @@
 /*                                                                       */
 /*    This file is part of the HiGHS linear optimization suite           */
 /*                                                                       */
-/*    Written and engineered 2008-2022 at the University of Edinburgh    */
+/*    Written and engineered 2008-2023 by Julian Hall, Ivet Galabova,    */
+/*    Leona Gottwald and Michael Feldmeier                               */
 /*                                                                       */
 /*    Available as open-source under the MIT License                     */
-/*                                                                       */
-/*    Authors: Julian Hall, Ivet Galabova, Leona Gottwald and Michael    */
-/*    Feldmeier                                                          */
 /*                                                                       */
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 /**@file util/HighsMatrixUtils.cpp
@@ -191,7 +189,7 @@ HighsStatus assessMatrix(
       // Check the value
       double abs_value = fabs(matrix_value[el]);
       // Check that the value is not too large
-      bool large_value = abs_value > large_matrix_value;
+      bool large_value = abs_value >= large_matrix_value;
       if (large_value) {
         if (max_large_value < abs_value) max_large_value = abs_value;
         if (min_large_value > abs_value) min_large_value = abs_value;

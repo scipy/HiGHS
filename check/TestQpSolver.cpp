@@ -1,5 +1,6 @@
 #include <cstdio>
 
+#include "HCheckConfig.h"
 #include "Highs.h"
 #include "catch.hpp"
 #include "io/FilereaderLp.h"
@@ -42,6 +43,15 @@ TEST_CASE("qpsolver", "[qpsolver]") {
   required_x0 = 1.4;
   required_x1 = 1.7;
 
+  const double required_col_dual0 = 0;
+  const double required_col_dual1 = 0;
+  const double required_row_dual0 = 0.8;
+  const double required_row_dual1 = 0;
+  const double required_row_dual2 = 0;
+
+  // At the optimal solution g-Qx = [0.8, -1.6] with only constraint 0
+  // active. It has normal [1, -2], so dual of 0.8 is correct
+
   Highs highs;
   highs.setOptionValue("output_flag", dev_run);
   const HighsModel& model = highs.getModel();
@@ -64,6 +74,19 @@ TEST_CASE("qpsolver", "[qpsolver]") {
           double_equal_tolerance);
   REQUIRE(fabs(solution.col_value[0] - required_x0) < double_equal_tolerance);
   REQUIRE(fabs(solution.col_value[1] - required_x1) < double_equal_tolerance);
+
+  REQUIRE(fabs(solution.col_dual[0] - required_col_dual0) <
+          double_equal_tolerance);
+  REQUIRE(fabs(solution.col_dual[1] - required_col_dual1) <
+          double_equal_tolerance);
+  REQUIRE(fabs(solution.row_dual[0] - required_row_dual0) <
+          double_equal_tolerance);
+  REQUIRE(fabs(solution.row_dual[1] - required_row_dual1) <
+          double_equal_tolerance);
+  REQUIRE(fabs(solution.row_dual[1] - required_row_dual1) <
+          double_equal_tolerance);
+
+  if (dev_run) highs.writeSolution("", 1);
 
   // Check with qjh.mps
   filename = std::string(HIGHS_DIR) + "/check/instances/qjh.mps";
@@ -120,7 +143,7 @@ TEST_CASE("qpsolver", "[qpsolver]") {
   HighsInt num_col = highs.getNumCol();
   std::vector<HighsVarType> integrality;
   integrality.assign(num_col, HighsVarType::kInteger);
-  REQUIRE(highs.changeColsIntegrality(0, num_col - 1, &integrality[0]) ==
+  REQUIRE(highs.changeColsIntegrality(0, num_col - 1, integrality.data()) ==
           HighsStatus::kOk);
   return_status = highs.run();
   REQUIRE(return_status == HighsStatus::kError);
@@ -249,7 +272,8 @@ TEST_CASE("test-qod", "[qpsolver]") {
   // Add the constraint 0.5 <= x0 + x1
   lp.a_matrix_.index_ = {0, 1};
   lp.a_matrix_.value_ = {1, 1};
-  highs.addRow(0.5, inf, 2, &lp.a_matrix_.index_[0], &lp.a_matrix_.value_[0]);
+  highs.addRow(0.5, inf, 2, lp.a_matrix_.index_.data(),
+               lp.a_matrix_.value_.data());
   if (dev_run) highs.writeModel("");
   return_status = highs.run();
   REQUIRE(return_status == HighsStatus::kOk);
@@ -533,4 +557,46 @@ TEST_CASE("test-semi-definite1", "[qpsolver]") {
   REQUIRE(fabs(objective_function_value + 1.5) < double_equal_tolerance);
   REQUIRE(fabs(solution.col_value[0] - 1) < double_equal_tolerance);
   REQUIRE(fabs(solution.col_value[1]) < double_equal_tolerance);
+}
+
+TEST_CASE("test-semi-definite2", "[qpsolver]") {
+  HighsStatus return_status;
+  HighsModelStatus model_status;
+  double required_objective_function_value;
+
+  HighsLp lp;
+  HighsHessian hessian;
+
+  lp.model_name_ = "semi-definite";
+  lp.num_col_ = 2;
+  lp.num_row_ = 1;
+  lp.col_cost_ = {0.0, -1.0};
+  lp.col_lower_ = {-inf, -inf};
+  lp.col_upper_ = {inf, inf};
+  lp.sense_ = ObjSense::kMinimize;
+  lp.offset_ = 0;
+  lp.row_lower_ = {-inf};
+  lp.row_upper_ = {1};
+  lp.a_matrix_.format_ = MatrixFormat::kRowwise;
+  lp.a_matrix_.start_ = {0, 2};
+  lp.a_matrix_.index_ = {0, 1};
+  lp.a_matrix_.value_ = {1.0, 1.0};
+
+  Highs highs;
+  highs.setOptionValue("output_flag", dev_run);
+  REQUIRE(highs.passModel(lp) == HighsStatus::kOk);
+  // Illustrates how final entries of 0 on the diagonal are handled
+  hessian.dim_ = lp.num_col_;
+  hessian.start_ = {0, 1, 1};
+  hessian.index_ = {0};
+  hessian.value_ = {1.0};
+  REQUIRE(highs.passHessian(hessian) == HighsStatus::kOk);
+
+  REQUIRE(highs.run() == HighsStatus::kOk);
+  if (dev_run) highs.writeSolution("", kSolutionStylePretty);
+  const HighsSolution& solution = highs.getSolution();
+  const double objective_function_value = highs.getObjectiveValue();
+  REQUIRE(fabs(objective_function_value + 1.5) < double_equal_tolerance);
+  REQUIRE(fabs(solution.col_value[0] + 1) < double_equal_tolerance);
+  REQUIRE(fabs(solution.col_value[1] - 2) < double_equal_tolerance);
 }

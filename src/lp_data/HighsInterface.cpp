@@ -2,12 +2,10 @@
 /*                                                                       */
 /*    This file is part of the HiGHS linear optimization suite           */
 /*                                                                       */
-/*    Written and engineered 2008-2022 at the University of Edinburgh    */
+/*    Written and engineered 2008-2023 by Julian Hall, Ivet Galabova,    */
+/*    Leona Gottwald and Michael Feldmeier                               */
 /*                                                                       */
 /*    Available as open-source under the MIT License                     */
-/*                                                                       */
-/*    Authors: Julian Hall, Ivet Galabova, Leona Gottwald and Michael    */
-/*    Feldmeier                                                          */
 /*                                                                       */
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 /**@file lp_data/HighsInterface.cpp
@@ -109,11 +107,12 @@ HighsStatus Highs::addColsInterface(
   std::vector<double> local_colUpper{ext_col_upper,
                                      ext_col_upper + ext_num_new_col};
 
-  return_status =
-      interpretCallStatus(options_.log_options,
-                          assessCosts(options, lp.num_col_, index_collection,
-                                      local_colCost, options.infinite_cost),
-                          return_status, "assessCosts");
+  bool local_has_infinite_cost = false;
+  return_status = interpretCallStatus(
+      options_.log_options,
+      assessCosts(options, lp.num_col_, index_collection, local_colCost,
+                  local_has_infinite_cost, options.infinite_cost),
+      return_status, "assessCosts");
   if (return_status == HighsStatus::kError) return return_status;
   // Assess the column bounds
   return_status = interpretCallStatus(
@@ -125,7 +124,6 @@ HighsStatus Highs::addColsInterface(
   // Append the columns to the LP vectors and matrix
   appendColsToLpVectors(lp, ext_num_new_col, local_colCost, local_colLower,
                         local_colUpper);
-
   // Form a column-wise HighsSparseMatrix of the new matrix columns so
   // that is is easy to handle and, if there are nonzeros, it can be
   // normalised
@@ -170,9 +168,17 @@ HighsStatus Highs::addColsInterface(
   }
   // Update the basis correponding to new nonbasic columns
   if (valid_basis) appendNonbasicColsToBasisInterface(ext_num_new_col);
+
+  // Possibly add column names
+  lp.addColNames("", ext_num_new_col);
+
   // Increase the number of columns in the LP
   lp.num_col_ += ext_num_new_col;
   assert(lpDimensionsOk("addCols", lp, options.log_options));
+
+  // Interpret possible introduction of infinite costs
+  lp.has_infinite_cost_ = lp.has_infinite_cost_ || local_has_infinite_cost;
+  assert(lp.has_infinite_cost_ == lp.hasInfiniteCost(options.infinite_cost));
 
   // Deduce the consequences of adding new columns
   invalidateModelStatusSolutionAndInfo();
@@ -289,6 +295,9 @@ HighsStatus Highs::addRowsInterface(HighsInt ext_num_new_row,
   // Update the basis correponding to new basic rows
   if (valid_basis) appendBasicRowsToBasisInterface(ext_num_new_row);
 
+  // Possibly add row names
+  lp.addRowNames("", ext_num_new_row);
+
   // Increase the number of rows in the LP
   lp.num_row_ += ext_num_new_row;
   assert(lpDimensionsOk("addRows", lp, options.log_options));
@@ -297,6 +306,7 @@ HighsStatus Highs::addRowsInterface(HighsInt ext_num_new_row,
   invalidateModelStatusSolutionAndInfo();
   // Determine any implications for simplex data
   ekk_instance_.addRows(lp, local_ar_matrix);
+
   return return_status;
 }
 
@@ -343,6 +353,7 @@ void Highs::deleteColsInterface(HighsIndexCollection& index_collection) {
     assert(new_col == lp.num_col_);
   }
   assert(lpDimensionsOk("deleteCols", lp, options_.log_options));
+  lp.col_hash_.name2index.clear();
 }
 
 void Highs::deleteRowsInterface(HighsIndexCollection& index_collection) {
@@ -384,6 +395,7 @@ void Highs::deleteRowsInterface(HighsIndexCollection& index_collection) {
     assert(new_row == lp.num_row_);
   }
   assert(lpDimensionsOk("deleteRows", lp, options_.log_options));
+  lp.row_hash_.name2index.clear();
 }
 
 void Highs::getColsInterface(const HighsIndexCollection& index_collection,
@@ -512,15 +524,13 @@ void Highs::getRowsInterface(const HighsIndexCollection& index_collection,
       if (row_upper != NULL) row_upper[new_iRow] = lp.row_upper_[iRow];
     }
   }
-  // bail out if no matrix is to be extracted
   const bool extract_start = row_matrix_start != NULL;
   const bool extract_index = row_matrix_index != NULL;
   const bool extract_value = row_matrix_value != NULL;
   const bool extract_matrix = extract_index || extract_value;
-  // Someone might just want the values, but to get them makes use of
-  // the starts so tough!
-  if (!extract_start) return;
-  // Allocate an array of lengths for the row-wise matrix to be extracted
+  // Allocate an array of lengths for the row-wise matrix to be
+  // extracted: necessary even if just the number of nonzeros is
+  // required
   vector<HighsInt> row_matrix_length;
   row_matrix_length.assign(get_num_row, 0);
   // Identify the lengths of the rows in the row-wise matrix to be extracted
@@ -532,6 +542,14 @@ void Highs::getRowsInterface(const HighsIndexCollection& index_collection,
       if (new_iRow >= 0) row_matrix_length[new_iRow]++;
     }
   }
+  if (!extract_start) {
+    // bail out if no matrix starts are to be extracted, but only after
+    // computing the number of nonzeros
+    for (HighsInt iRow = 0; iRow < get_num_row; iRow++)
+      get_num_nz += row_matrix_length[iRow];
+    return;
+  }
+  // Allocate an array of lengths for the row-wise matrix to be extracted
   row_matrix_start[0] = 0;
   for (HighsInt iRow = 0; iRow < get_num_row - 1; iRow++) {
     row_matrix_start[iRow + 1] =
@@ -612,13 +630,20 @@ HighsStatus Highs::changeCostsInterface(HighsIndexCollection& index_collection,
   // Take a copy of the cost that can be normalised
   std::vector<double> local_colCost{cost, cost + num_cost};
   HighsStatus return_status = HighsStatus::kOk;
-  return_status =
-      interpretCallStatus(options_.log_options,
-                          assessCosts(options_, 0, index_collection,
-                                      local_colCost, options_.infinite_cost),
-                          return_status, "assessCosts");
+  bool local_has_infinite_cost = false;
+  return_status = interpretCallStatus(
+      options_.log_options,
+      assessCosts(options_, 0, index_collection, local_colCost,
+                  local_has_infinite_cost, options_.infinite_cost),
+      return_status, "assessCosts");
   if (return_status == HighsStatus::kError) return return_status;
-  changeLpCosts(model_.lp_, index_collection, local_colCost);
+  HighsLp& lp = model_.lp_;
+  changeLpCosts(lp, index_collection, local_colCost, options_.infinite_cost);
+
+  // Interpret possible introduction of infinite costs
+  lp.has_infinite_cost_ = lp.has_infinite_cost_ || local_has_infinite_cost;
+  assert(lp.has_infinite_cost_ == lp.hasInfiniteCost(options_.infinite_cost));
+
   // Deduce the consequences of new costs
   invalidateModelStatusSolutionAndInfo();
   // Determine any implications for simplex data
@@ -648,8 +673,8 @@ HighsStatus Highs::changeColBoundsInterface(
   // set and data are in ascending order
   if (index_collection.is_set_)
     sortSetData(index_collection.set_num_entries_, index_collection.set_,
-                col_lower, col_upper, NULL, &local_colLower[0],
-                &local_colUpper[0], NULL);
+                col_lower, col_upper, NULL, local_colLower.data(),
+                local_colUpper.data(), NULL);
   HighsStatus return_status = HighsStatus::kOk;
   return_status = interpretCallStatus(
       options_.log_options,
@@ -693,7 +718,8 @@ HighsStatus Highs::changeRowBoundsInterface(
   // set and data are in ascending order
   if (index_collection.is_set_)
     sortSetData(index_collection.set_num_entries_, index_collection.set_, lower,
-                upper, NULL, &local_rowLower[0], &local_rowUpper[0], NULL);
+                upper, NULL, local_rowLower.data(), local_rowUpper.data(),
+                NULL);
   HighsStatus return_status = HighsStatus::kOk;
   return_status = interpretCallStatus(
       options_.log_options,
@@ -730,9 +756,21 @@ void Highs::changeCoefficientInterface(const HighsInt ext_row,
                             zero_new_value);
   // Deduce the consequences of a changed element
   //
-  // ToDo: Can do something more intelligent if element is in nonbasic column.
-  // Otherwise, treat it as if it's a new row
+  // ToDo: Can do something more intelligent if element is in nonbasic
+  // column
+  //
+  const bool basic_column =
+      this->basis_.col_status[ext_col] == HighsBasisStatus::kBasic;
+  //
+  // For now, treat it as if it's a new row
   invalidateModelStatusSolutionAndInfo();
+
+  if (basic_column) {
+    // Basis is retained, but is has to be viewed as alien, since the
+    // basis matrix has changed
+    this->basis_.was_alien = true;
+    this->basis_.alien = true;
+  }
 
   // Determine any implications for simplex data
   ekk_instance_.updateStatus(LpAction::kNewRows);
@@ -1091,10 +1129,9 @@ HighsStatus Highs::getBasicVariablesInterface(HighsInt* basic_variables) {
   if (!ekk_status.has_invert) {
     // The LP has no invert to use, so have to set one up, but only
     // for the current basis, so return_value is the rank deficiency.
-    //
-    // Create a HighsLpSolverObject
     HighsLpSolverObject solver_object(lp, basis_, solution_, info_,
-                                      ekk_instance_, options_, timer_);
+                                      ekk_instance_, callback_, options_,
+                                      timer_);
     const bool only_from_known_basis = true;
     return_status = interpretCallStatus(
         options_.log_options,
@@ -1410,7 +1447,7 @@ HighsStatus Highs::getPrimalRayInterface(bool& has_primal_ray,
       rhs[col - num_col] = primal_ray_sign;
     }
     HighsInt* column_num_nz = 0;
-    basisSolveInterface(rhs, &column[0], column_num_nz, NULL, false);
+    basisSolveInterface(rhs, column.data(), column_num_nz, NULL, false);
     // Now zero primal_ray_value and scatter the column according to
     // the basic variables.
     for (HighsInt iCol = 0; iCol < num_col; iCol++) primal_ray_value[iCol] = 0;
@@ -1421,6 +1458,13 @@ HighsStatus Highs::getPrimalRayInterface(bool& has_primal_ray,
     if (col < num_col) primal_ray_value[col] = -primal_ray_sign;
   }
   return return_status;
+}
+
+HighsStatus Highs::getRangingInterface() {
+  HighsLpSolverObject solver_object(model_.lp_, basis_, solution_, info_,
+                                    ekk_instance_, callback_, options_, timer_);
+  solver_object.model_status_ = model_status_;
+  return getRangingData(this->ranging_, solver_object);
 }
 
 bool Highs::aFormatOk(const HighsInt num_nz, const HighsInt format) {
@@ -1505,4 +1549,141 @@ HighsStatus Highs::invertRequirementError(std::string method_name) {
   highsLogUser(options_.log_options, HighsLogType::kError,
                "No invertible representation for %s\n", method_name.c_str());
   return HighsStatus::kError;
+}
+
+HighsStatus Highs::lpInvertRequirementError(std::string method_name) {
+  assert(!ekk_instance_.status_.has_invert);
+  if (model_.isMip() || model_.isQp()) return HighsStatus::kOk;
+  highsLogUser(options_.log_options, HighsLogType::kError,
+               "No LP invertible representation for %s\n", method_name.c_str());
+  return HighsStatus::kError;
+}
+
+HighsStatus Highs::handleInfCost() {
+  HighsLp& lp = this->model_.lp_;
+  if (!lp.has_infinite_cost_) return HighsStatus::kOk;
+  HighsLpMods& mods = lp.mods_;
+  double inf_cost = this->options_.infinite_cost;
+  for (HighsInt k = 0; k < 2; k++) {
+    // Pass twice: first checking that infinite costs can be handled,
+    // then handling them, so that model is unmodified if infinite
+    // costs cannot be handled
+    for (HighsInt iCol = 0; iCol < lp.num_col_; iCol++) {
+      double cost = lp.col_cost_[iCol];
+      if (cost > -inf_cost && cost < inf_cost) continue;
+      double lower = lp.col_lower_[iCol];
+      double upper = lp.col_upper_[iCol];
+      if (lp.isMip()) {
+        if (lp.integrality_[iCol] == HighsVarType::kInteger) {
+          lower = std::ceil(lower);
+          upper = std::floor(upper);
+        }
+      }
+      if (cost <= -inf_cost) {
+        if (lp.sense_ == ObjSense::kMinimize) {
+          // Minimizing with -inf cost so try to fix at upper bound
+          if (upper < kHighsInf) {
+            if (k) lp.col_lower_[iCol] = upper;
+          } else {
+            highsLogUser(options_.log_options, HighsLogType::kError,
+                         "Cannot minimize with a cost on variable %d of %g and "
+                         "upper bound of %g\n",
+                         int(iCol), cost, upper);
+            return HighsStatus::kError;
+          }
+        } else {
+          // Maximizing with -inf cost so try to fix at lower bound
+          if (lower > -kHighsInf) {
+            if (k) lp.col_upper_[iCol] = lower;
+          } else {
+            highsLogUser(options_.log_options, HighsLogType::kError,
+                         "Cannot maximize with a cost on variable %d of %g and "
+                         "lower bound of %g\n",
+                         int(iCol), cost, lower);
+            return HighsStatus::kError;
+          }
+        }
+      } else {
+        if (lp.sense_ == ObjSense::kMinimize) {
+          // Minimizing with inf cost so try to fix at lower bound
+          if (lower > -kHighsInf) {
+            if (k) lp.col_upper_[iCol] = lower;
+          } else {
+            highsLogUser(options_.log_options, HighsLogType::kError,
+                         "Cannot minimize with a cost on variable %d of %g and "
+                         "lower bound of %g\n",
+                         int(iCol), cost, lower);
+            return HighsStatus::kError;
+          }
+        } else {
+          // Maximizing with inf cost so try to fix at upper bound
+          if (upper < kHighsInf) {
+            if (k) lp.col_lower_[iCol] = upper;
+          } else {
+            highsLogUser(options_.log_options, HighsLogType::kError,
+                         "Cannot maximize with a cost on variable %d of %g and "
+                         "upper bound of %g\n",
+                         int(iCol), cost, upper);
+            return HighsStatus::kError;
+          }
+        }
+      }
+      if (k) {
+        mods.save_inf_cost_variable_index.push_back(iCol);
+        mods.save_inf_cost_variable_cost.push_back(cost);
+        mods.save_inf_cost_variable_lower.push_back(lower);
+        mods.save_inf_cost_variable_upper.push_back(upper);
+        lp.col_cost_[iCol] = 0;
+      }
+    }
+  }
+  // Infinite costs have been removed, but their presence in the
+  // original model is known from mods.save_inf_cost_variable_*, so
+  // set lp.has_infinite_cost_ to be false to avoid assert when run()
+  // is called using copy of model in MIP solver (See #1446)
+  lp.has_infinite_cost_ = false;
+
+  return HighsStatus::kOk;
+}
+
+void Highs::restoreInfCost(HighsStatus& return_status) {
+  HighsLp& lp = this->model_.lp_;
+  HighsBasis& basis = this->basis_;
+  HighsLpMods& mods = lp.mods_;
+  HighsInt num_inf_cost = mods.save_inf_cost_variable_index.size();
+  if (num_inf_cost <= 0) return;
+  assert(num_inf_cost);
+  for (HighsInt ix = 0; ix < num_inf_cost; ix++) {
+    HighsInt iCol = mods.save_inf_cost_variable_index[ix];
+    double cost = mods.save_inf_cost_variable_cost[ix];
+    double lower = mods.save_inf_cost_variable_lower[ix];
+    double upper = mods.save_inf_cost_variable_upper[ix];
+    HighsBasisStatus status =
+        basis.valid ? basis.col_status[iCol] : HighsBasisStatus::kBasic;
+    double value = solution_.value_valid ? solution_.col_value[iCol] : 0;
+    if (basis.valid) {
+      assert(basis.col_status[iCol] != HighsBasisStatus::kBasic);
+      if (lp.col_lower_[iCol] == lower) {
+        basis.col_status[iCol] = HighsBasisStatus::kLower;
+      } else {
+        basis.col_status[iCol] = HighsBasisStatus::kUpper;
+      }
+    }
+    assert(lp.col_cost_[iCol] == 0);
+    if (value) this->info_.objective_function_value += value * cost;
+    lp.col_cost_[iCol] = cost;
+    lp.col_lower_[iCol] = lower;
+    lp.col_upper_[iCol] = upper;
+  }
+  // Infinite costs have been reintroduced, so reset to true the flag
+  // that was set false in Highs::handleInfCost() (See #1446)
+  lp.has_infinite_cost_ = true;
+
+  if (this->model_status_ == HighsModelStatus::kInfeasible) {
+    // Model is infeasible with the infinite cost variables fixed at
+    // appropriate values, so model status cannot be determined
+    this->model_status_ = HighsModelStatus::kUnknown;
+    setHighsModelStatusAndClearSolutionAndBasis(this->model_status_);
+    return_status = highsStatusFromHighsModelStatus(model_status_);
+  }
 }

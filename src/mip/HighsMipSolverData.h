@@ -2,12 +2,10 @@
 /*                                                                       */
 /*    This file is part of the HiGHS linear optimization suite           */
 /*                                                                       */
-/*    Written and engineered 2008-2022 at the University of Edinburgh    */
+/*    Written and engineered 2008-2023 by Julian Hall, Ivet Galabova,    */
+/*    Leona Gottwald and Michael Feldmeier                               */
 /*                                                                       */
 /*    Available as open-source under the MIT License                     */
-/*                                                                       */
-/*    Authors: Julian Hall, Ivet Galabova, Leona Gottwald and Michael    */
-/*    Feldmeier                                                          */
 /*                                                                       */
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
@@ -48,6 +46,7 @@ struct HighsMipSolverData {
   HighsRedcostFixing redcostfixing;
   HighsObjectiveFunction objectiveFunction;
   presolve::HighsPostsolveStack postSolveStack;
+  HighsPresolveStatus presolve_status;
   HighsLp presolvedModel;
   bool cliquesExtracted;
   bool rowMatrixSet;
@@ -159,6 +158,7 @@ struct HighsMipSolverData {
   void checkObjIntegrality();
   void runPresolve();
   void setupDomainPropagation();
+  void saveReportMipSolution(const double new_upper_limit);
   void runSetup();
   double transformNewIncumbent(const std::vector<double>& sol);
   double percentageInactiveIntegers() const;
@@ -184,6 +184,10 @@ struct HighsMipSolverData {
   }
 
   bool checkLimits(int64_t nodeOffset = 0) const;
+  void limitsToBounds(double& dual_bound, double& primal_bound,
+                      double& mip_rel_gap) const;
+  bool interruptFromCallbackWithData(const int callback_type,
+                                     const std::string message = "") const;
 };
 
 #endif

@@ -2,12 +2,10 @@
 /*                                                                       */
 /*    This file is part of the HiGHS linear optimization suite           */
 /*                                                                       */
-/*    Written and engineered 2008-2022 at the University of Edinburgh    */
+/*    Written and engineered 2008-2023 by Julian Hall, Ivet Galabova,    */
+/*    Leona Gottwald and Michael Feldmeier                               */
 /*                                                                       */
 /*    Available as open-source under the MIT License                     */
-/*                                                                       */
-/*    Authors: Julian Hall, Ivet Galabova, Leona Gottwald and Michael    */
-/*    Feldmeier                                                          */
 /*                                                                       */
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 /**@file util/HighsTimer.h
@@ -16,6 +14,7 @@
 #ifndef UTIL_HIGHSTIMER_H_
 #define UTIL_HIGHSTIMER_H_
 
+#include <algorithm>
 #include <cassert>
 #include <chrono>
 #include <cstdio>
@@ -276,9 +275,8 @@ class HighsTimer {
             double percent_ideal = 100.0 * time / ideal_sum_time;
             printf("; %5.1f%%", percent_ideal);
           }
-          printf("; %5.1f%%):%9" HIGHSINT_FORMAT " %11.4e\n",
-                 percent_sum_clock_times[i], clock_num_call[iClock],
-                 time_per_call);
+          printf("; %5.1f%%):%9ld %11.4e\n", percent_sum_clock_times[i],
+                 static_cast<long int>(clock_num_call[iClock]), time_per_call);
         }
       }
       sum_time += time;
