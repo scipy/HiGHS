@@ -2,7 +2,7 @@
 /*                                                                       */
 /*    This file is part of the HiGHS linear optimization suite           */
 /*                                                                       */
-/*    Written and engineered 2008-2023 by Julian Hall, Ivet Galabova,    */
+/*    Written and engineered 2008-2024 by Julian Hall, Ivet Galabova,    */
 /*    Leona Gottwald and Michael Feldmeier                               */
 /*                                                                       */
 /*    Available as open-source under the MIT License                     */
@@ -37,7 +37,6 @@ HighsInt highsVersionMajor();
 HighsInt highsVersionMinor();
 HighsInt highsVersionPatch();
 const char* highsGithash();
-const char* highsCompilationDate();
 
 /**
  * @brief Class to set parameters and run HiGHS
@@ -77,11 +76,6 @@ class Highs {
    * @brief Return githash
    */
   std::string githash() const { return highsGithash(); }
-
-  /**
-   * @brief Return compilation date
-   */
-  std::string compilationDate() const { return highsCompilationDate(); }
 
   /**
    * @brief Reset the options and then call clearModel()
@@ -385,6 +379,13 @@ class Highs {
   double getInfinity() { return kHighsInf; }
 
   /**
+   * @brief Get the size of HighsInt
+   */
+  HighsInt getSizeofHighsInt() {
+    return sizeof(options_.num_user_settable_options_);
+  }
+
+  /**
    * @brief Get the run time of HiGHS
    */
   double getRunTime() { return timer_.readRunHighsClock(); }
@@ -408,6 +409,22 @@ class Highs {
    * @brief Return a const reference to the logging data for presolve
    */
   const HighsPresolveLog& getPresolveLog() const { return presolve_log_; }
+
+  /**
+   * @brief Return a const pointer to the original column indices for
+   * the presolved model
+   */
+  const HighsInt* getPresolveOrigColsIndex() const {
+    return presolve_.data_.postSolveStack.getOrigColsIndex();
+  }
+
+  /**
+   * @brief Return a const pointer to the original row indices for the
+   * presolved model
+   */
+  const HighsInt* getPresolveOrigRowsIndex() const {
+    return presolve_.data_.postSolveStack.getOrigRowsIndex();
+  }
 
   /**
    * @brief Return a const reference to the incumbent LP
@@ -481,6 +498,14 @@ class Highs {
    * @brief Get the ranging information for the current LP
    */
   HighsStatus getRanging(HighsRanging& ranging);
+
+  /**
+   * @brief Get the ill-conditioning information for the current basis
+   */
+  HighsStatus getIllConditioning(HighsIllConditioning& ill_conditioning,
+                                 const bool constraint,
+                                 const HighsInt method = 0,
+                                 const double ill_conditioning_bound = 1e-4);
 
   /**
    * @brief Get the current model objective value
@@ -617,7 +642,7 @@ class Highs {
    * @brief Get multiple columns from the model given by a set
    */
   HighsStatus getCols(
-      const HighsInt num_set_entries,  //!< The number of indides in the set
+      const HighsInt num_set_entries,  //!< The number of indices in the set
       const HighsInt* set,  //!< Array of size num_set_entries with indices of
                             //!< columns to get
       HighsInt& num_col,    //!< Number of columns got from the model
@@ -689,7 +714,7 @@ class Highs {
    * @brief Get multiple rows from the model given by a set
    */
   HighsStatus getRows(
-      const HighsInt num_set_entries,  //!< The number of indides in the set
+      const HighsInt num_set_entries,  //!< The number of indices in the set
       const HighsInt*
           set,  //!< Array of size num_set_entries with indices of rows to get
       HighsInt& num_row,  //!< Number of rows got from the model
@@ -740,6 +765,17 @@ class Highs {
   HighsStatus writeModel(const std::string& filename = "");
 
   /**
+   * @brief Write out the incumbent presolved model to a file
+   */
+  HighsStatus writePresolvedModel(const std::string& filename = "");
+
+  /**
+   * @brief Write out the given model to a file
+   */
+  HighsStatus writeLocalModel(HighsModel& model,
+                              const std::string& filename = "");
+
+  /**
    * @brief Write out the internal HighsBasis instance to a file
    */
   HighsStatus writeBasis(const std::string& filename = "");
@@ -785,6 +821,14 @@ class Highs {
    */
   HighsStatus changeColsIntegrality(const HighsInt* mask,
                                     const HighsVarType* integrality);
+
+  /**
+   * @brief Clear the integrality of all columns
+   */
+  HighsStatus clearIntegrality() {
+    this->model_.lp_.integrality_.clear();
+    return HighsStatus::kOk;
+  }
 
   /**
    * @brief Change the cost of a column
@@ -900,7 +944,7 @@ class Highs {
    * @brief Adds a variable to the incumbent model, without the cost or matrix
    * coefficients
    */
-  HighsStatus addVar(const double lower, const double upper) {
+  HighsStatus addVar(const double lower = 0, const double upper = kHighsInf) {
     return this->addVars(1, &lower, &upper);
   }
 
@@ -943,8 +987,9 @@ class Highs {
 
   /**
    * @brief Delete multiple columns from the incumbent model given by
-   * a mask (full length array with 1 => change; 0 => not). New index
-   * of any column not deleted is returned in place of the value 0.
+   * a mask (full length array with 1 => delete; 0 => keep). New index
+   * of any column kept is returned in place of the value 0.  For
+   * deleted columns, a value of -1 is returned.
    */
   HighsStatus deleteCols(HighsInt* mask);
 
@@ -964,9 +1009,10 @@ class Highs {
   }
 
   /**
-   * @brief Delete multiple variables from the incumbent model given by
-   * a mask (full length array with 1 => change; 0 => not). New index
-   * of any variable not deleted is returned in place of the value 0.
+   * @brief Delete multiple variables from the incumbent model given
+   * by a mask (full length array with 1 => delete; 0 => keep). New
+   * index of any variable not deleted is returned in place of the
+   * value 0. For deleted variables, a value of -1 is returned.
    */
   HighsStatus deleteVars(HighsInt* mask) { return deleteCols(mask); }
 
@@ -983,8 +1029,9 @@ class Highs {
 
   /**
    * @brief Delete multiple rows from the incumbent model given by a
-   * mask (full length array with 1 => change; 0 => not). New index of
-   * any row not deleted is returned in place of the value 0.
+   * mask (full length array with 1 => delete; 0 => keep). New index
+   * of any row not deleted is returned in place of the value 0. For
+   * deleted rows, a value of -1 is returned.
    */
   HighsStatus deleteRows(HighsInt* mask);
 
@@ -1017,22 +1064,30 @@ class Highs {
   HighsStatus setSolution(const HighsSolution& solution);
 
   /**
+   * @brief Pass a sparse primal solution
+   */
+  HighsStatus setSolution(const HighsInt num_entries, const HighsInt* index,
+                          const double* value);
+
+  /**
    * @brief Set the callback method to use for HiGHS
    */
-  HighsStatus setCallback(void (*user_callback)(const int, const char*,
-                                                const HighsCallbackDataOut*,
-                                                HighsCallbackDataIn*, void*),
+  HighsStatus setCallback(HighsCallbackFunctionType user_callback,
+                          void* user_callback_data = nullptr);
+  HighsStatus setCallback(HighsCCallbackType c_callback,
                           void* user_callback_data = nullptr);
 
   /**
    * @brief Start callback of given type
    */
   HighsStatus startCallback(const int callback_type);
+  HighsStatus startCallback(const HighsCallbackType callback_type);
 
   /**
    * @brief Stop callback of given type
    */
   HighsStatus stopCallback(const int callback_type);
+  HighsStatus stopCallback(const HighsCallbackType callback_type);
 
   /**
    * @brief Use the HighsBasis passed to set the internal HighsBasis
@@ -1162,6 +1217,8 @@ class Highs {
                                        HVector& row_ep_buffer);
 
   // Start of deprecated methods
+
+  std::string compilationDate() const { return "deprecated"; }
 
   HighsStatus setLogCallback(void (*user_log_callback)(HighsLogType,
                                                        const char*, void*),
@@ -1336,7 +1393,7 @@ class Highs {
   //
   // Methods to clear solver data for users in Highs class members
   // before (possibly) updating them with data from trying to solve
-  // the inumcumbent model.
+  // the incumbent model.
   //
   // Invalidates all solver data in Highs class members by calling
   // invalidateModelStatus(), invalidateSolution(), invalidateBasis(),
@@ -1445,6 +1502,7 @@ class Highs {
   HighsStatus getPrimalRayInterface(bool& has_primal_ray,
                                     double* primal_ray_value);
   HighsStatus getRangingInterface();
+
   bool aFormatOk(const HighsInt num_nz, const HighsInt format);
   bool qFormatOk(const HighsInt num_nz, const HighsInt format);
   void clearZeroHessian();
@@ -1455,6 +1513,23 @@ class Highs {
 
   HighsStatus handleInfCost();
   void restoreInfCost(HighsStatus& return_status);
+  HighsStatus optionChangeAction();
+  HighsStatus computeIllConditioning(HighsIllConditioning& ill_conditioning,
+                                     const bool constraint,
+                                     const HighsInt method,
+                                     const double ill_conditioning_bound);
+  void formIllConditioningLp0(HighsLp& ill_conditioning_lp,
+                              std::vector<HighsInt>& basic_var,
+                              const bool constraint);
+  void formIllConditioningLp1(HighsLp& ill_conditioning_lp,
+                              std::vector<HighsInt>& basic_var,
+                              const bool constraint,
+                              const double ill_conditioning_bound);
+  bool infeasibleBoundsOk();
 };
+
+// Start of deprecated methods not in the Highs class
+
+const char* highsCompilationDate();
 
 #endif

@@ -2,7 +2,7 @@
 /*                                                                       */
 /*    This file is part of the HiGHS linear optimization suite           */
 /*                                                                       */
-/*    Written and engineered 2008-2023 by Julian Hall, Ivet Galabova,    */
+/*    Written and engineered 2008-2024 by Julian Hall, Ivet Galabova,    */
 /*    Leona Gottwald and Michael Feldmeier                               */
 /*                                                                       */
 /*    Available as open-source under the MIT License                     */
@@ -15,6 +15,7 @@
 
 #include <cassert>
 
+#include "lp_data/HighsLpUtils.h"
 #include "util/HighsMatrixUtils.h"
 
 bool HighsLp::isMip() const {
@@ -175,6 +176,9 @@ void HighsLp::clear() {
   this->col_hash_.clear();
   this->row_hash_.clear();
 
+  this->user_cost_scale_ = 0;
+  this->user_bound_scale_ = 0;
+
   this->clearScale();
   this->is_scaled_ = false;
   this->is_moved_ = false;
@@ -254,6 +258,51 @@ void HighsLp::moveBackLpAndUnapplyScaling(HighsLp& lp) {
   *this = std::move(lp);
   this->unapplyScale();
   assert(this->is_moved_ == false);
+}
+
+bool HighsLp::userBoundScaleOk(const HighsInt user_bound_scale,
+                               const double infinite_bound) const {
+  const HighsInt dl_user_bound_scale =
+      user_bound_scale - this->user_bound_scale_;
+  if (!dl_user_bound_scale) return true;
+  if (!boundScaleOk(this->col_lower_, this->col_upper_, dl_user_bound_scale,
+                    infinite_bound))
+    return false;
+  return boundScaleOk(this->row_lower_, this->row_upper_, dl_user_bound_scale,
+                      infinite_bound);
+}
+
+void HighsLp::userBoundScale(const HighsInt user_bound_scale) {
+  const HighsInt dl_user_bound_scale =
+      user_bound_scale - this->user_bound_scale_;
+  if (!dl_user_bound_scale) return;
+  double dl_user_bound_scale_value = std::pow(2, dl_user_bound_scale);
+  for (HighsInt iCol = 0; iCol < this->num_col_; iCol++) {
+    this->col_lower_[iCol] *= dl_user_bound_scale_value;
+    this->col_upper_[iCol] *= dl_user_bound_scale_value;
+  }
+  for (HighsInt iRow = 0; iRow < this->num_row_; iRow++) {
+    this->row_lower_[iRow] *= dl_user_bound_scale_value;
+    this->row_upper_[iRow] *= dl_user_bound_scale_value;
+  }
+  // Record the current user bound scaling applied to the LP
+  this->user_bound_scale_ = user_bound_scale;
+}
+
+bool HighsLp::userCostScaleOk(const HighsInt user_cost_scale,
+                              const double infinite_cost) const {
+  const HighsInt dl_user_cost_scale = user_cost_scale - this->user_cost_scale_;
+  if (!dl_user_cost_scale) return true;
+  return costScaleOk(this->col_cost_, dl_user_cost_scale, infinite_cost);
+}
+
+void HighsLp::userCostScale(const HighsInt user_cost_scale) {
+  const HighsInt dl_user_cost_scale = user_cost_scale - this->user_cost_scale_;
+  if (!dl_user_cost_scale) return;
+  double dl_user_cost_scale_value = std::pow(2, dl_user_cost_scale);
+  for (HighsInt iCol = 0; iCol < this->num_col_; iCol++)
+    this->col_cost_[iCol] *= dl_user_cost_scale_value;
+  this->user_cost_scale_ = user_cost_scale;
 }
 
 void HighsLp::addColNames(const std::string name, const HighsInt num_new_col) {
@@ -342,6 +391,105 @@ void HighsLp::addRowNames(const std::string name, const HighsInt num_new_row) {
       return;
     }
   }
+}
+
+void HighsLp::deleteColsFromVectors(
+    HighsInt& new_num_col, const HighsIndexCollection& index_collection) {
+  assert(ok(index_collection));
+  HighsInt from_k;
+  HighsInt to_k;
+  limits(index_collection, from_k, to_k);
+  // Initialise new_num_col in case none is removed due to from_k > to_k
+  new_num_col = this->num_col_;
+  if (from_k > to_k) return;
+
+  HighsInt delete_from_col;
+  HighsInt delete_to_col;
+  HighsInt keep_from_col;
+  HighsInt keep_to_col = -1;
+  HighsInt current_set_entry = 0;
+
+  HighsInt col_dim = this->num_col_;
+  new_num_col = 0;
+  bool have_names = (this->col_names_.size() != 0);
+  bool have_integrality = (this->integrality_.size() != 0);
+  for (HighsInt k = from_k; k <= to_k; k++) {
+    updateOutInIndex(index_collection, delete_from_col, delete_to_col,
+                     keep_from_col, keep_to_col, current_set_entry);
+    // Account for the initial columns being kept
+    if (k == from_k) new_num_col = delete_from_col;
+    if (delete_to_col >= col_dim - 1) break;
+    assert(delete_to_col < col_dim);
+    for (HighsInt col = keep_from_col; col <= keep_to_col; col++) {
+      this->col_cost_[new_num_col] = this->col_cost_[col];
+      this->col_lower_[new_num_col] = this->col_lower_[col];
+      this->col_upper_[new_num_col] = this->col_upper_[col];
+      if (have_names) this->col_names_[new_num_col] = this->col_names_[col];
+      if (have_integrality)
+        this->integrality_[new_num_col] = this->integrality_[col];
+      new_num_col++;
+    }
+    if (keep_to_col >= col_dim - 1) break;
+  }
+  this->col_cost_.resize(new_num_col);
+  this->col_lower_.resize(new_num_col);
+  this->col_upper_.resize(new_num_col);
+  if (have_names) this->col_names_.resize(new_num_col);
+}
+
+void HighsLp::deleteRowsFromVectors(
+    HighsInt& new_num_row, const HighsIndexCollection& index_collection) {
+  assert(ok(index_collection));
+  HighsInt from_k;
+  HighsInt to_k;
+  limits(index_collection, from_k, to_k);
+  // Initialise new_num_row in case none is removed due to from_k > to_k
+  new_num_row = this->num_row_;
+  if (from_k > to_k) return;
+
+  HighsInt delete_from_row;
+  HighsInt delete_to_row;
+  HighsInt keep_from_row;
+  HighsInt keep_to_row = -1;
+  HighsInt current_set_entry = 0;
+
+  HighsInt row_dim = this->num_row_;
+  new_num_row = 0;
+  bool have_names = (HighsInt)this->row_names_.size() > 0;
+  for (HighsInt k = from_k; k <= to_k; k++) {
+    updateOutInIndex(index_collection, delete_from_row, delete_to_row,
+                     keep_from_row, keep_to_row, current_set_entry);
+    if (k == from_k) {
+      // Account for the initial rows being kept
+      new_num_row = delete_from_row;
+    }
+    if (delete_to_row >= row_dim - 1) break;
+    assert(delete_to_row < row_dim);
+    for (HighsInt row = keep_from_row; row <= keep_to_row; row++) {
+      this->row_lower_[new_num_row] = this->row_lower_[row];
+      this->row_upper_[new_num_row] = this->row_upper_[row];
+      if (have_names) this->row_names_[new_num_row] = this->row_names_[row];
+      new_num_row++;
+    }
+    if (keep_to_row >= row_dim - 1) break;
+  }
+  this->row_lower_.resize(new_num_row);
+  this->row_upper_.resize(new_num_row);
+  if (have_names) this->row_names_.resize(new_num_row);
+}
+
+void HighsLp::deleteCols(const HighsIndexCollection& index_collection) {
+  HighsInt new_num_col;
+  this->deleteColsFromVectors(new_num_col, index_collection);
+  this->a_matrix_.deleteCols(index_collection);
+  this->num_col_ = new_num_col;
+}
+
+void HighsLp::deleteRows(const HighsIndexCollection& index_collection) {
+  HighsInt new_num_row;
+  this->deleteRowsFromVectors(new_num_row, index_collection);
+  this->a_matrix_.deleteRows(index_collection);
+  this->num_row_ = new_num_row;
 }
 
 void HighsLp::unapplyMods() {
@@ -443,31 +591,43 @@ bool HighsLpMods::isClear() {
 }
 
 void HighsNameHash::form(const std::vector<std::string>& name) {
-  HighsInt num_name = name.size();
+  size_t num_name = name.size();
   this->clear();
-  for (HighsInt index = 0; index < num_name; index++) {
-    const bool duplicate = !this->name2index.emplace(name[index], index).second;
+  for (size_t index = 0; index < num_name; index++) {
+    auto emplace_result = this->name2index.emplace(name[index], index);
+    const bool duplicate = !emplace_result.second;
     if (duplicate) {
       // Find the original and mark it as duplicate
-      auto search = this->name2index.find(name[index]);
-      assert(search != this->name2index.end());
+      auto& search = emplace_result.first;
       assert(int(search->second) < int(this->name2index.size()));
-      this->name2index.erase(search);
-      this->name2index.insert({name[index], kHashIsDuplicate});
+      search->second = kHashIsDuplicate;
     }
   }
 }
 
 bool HighsNameHash::hasDuplicate(const std::vector<std::string>& name) {
-  HighsInt num_name = name.size();
+  size_t num_name = name.size();
   this->clear();
   bool has_duplicate = false;
-  for (HighsInt index = 0; index < num_name; index++) {
+  for (size_t index = 0; index < num_name; index++) {
     has_duplicate = !this->name2index.emplace(name[index], index).second;
     if (has_duplicate) break;
   }
   this->clear();
   return has_duplicate;
+}
+
+void HighsNameHash::update(int index, const std::string& old_name,
+                           const std::string& new_name) {
+  this->name2index.erase(old_name);
+  auto emplace_result = this->name2index.emplace(new_name, index);
+  const bool duplicate = !emplace_result.second;
+  if (duplicate) {
+    // Find the original and mark it as duplicate
+    auto& search = emplace_result.first;
+    assert(int(search->second) < int(this->name2index.size()));
+    search->second = kHashIsDuplicate;
+  }
 }
 
 void HighsNameHash::clear() { this->name2index.clear(); }

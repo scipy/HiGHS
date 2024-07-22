@@ -2,7 +2,7 @@
 /*                                                                       */
 /*    This file is part of the HiGHS linear optimization suite           */
 /*                                                                       */
-/*    Written and engineered 2008-2023 by Julian Hall, Ivet Galabova,    */
+/*    Written and engineered 2008-2024 by Julian Hall, Ivet Galabova,    */
 /*    Leona Gottwald and Michael Feldmeier                               */
 /*                                                                       */
 /*    Available as open-source under the MIT License                     */
@@ -33,6 +33,7 @@ struct HighsSolution {
   std::vector<double> col_dual;
   std::vector<double> row_value;
   std::vector<double> row_dual;
+  bool hasUndefined();
   void invalidate();
   void clear();
 };
@@ -117,6 +118,8 @@ struct HighsNameHash {
   std::unordered_map<std::string, int> name2index;
   void form(const std::vector<std::string>& name);
   bool hasDuplicate(const std::vector<std::string>& name);
+  void update(int index, const std::string& old_name,
+              const std::string& new_name);
   void clear();
 };
 
@@ -128,6 +131,16 @@ struct HighsPresolveRuleLog {
 
 struct HighsPresolveLog {
   std::vector<HighsPresolveRuleLog> rule;
+  void clear();
+};
+
+struct HighsIllConditioningRecord {
+  HighsInt index;
+  double multiplier;
+};
+
+struct HighsIllConditioning {
+  std::vector<HighsIllConditioningRecord> record;
   void clear();
 };
 

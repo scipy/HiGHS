@@ -1,26 +1,45 @@
 # HiGHS - Linear optimization software
 
-[![Build Status](https://github.com/ERGO-Code/HiGHS/workflows/build/badge.svg)](https://github.com/ERGO-Code/HiGHS/actions?query=workflow%3Abuild+branch%3Amaster)
+<!-- ![Build Status](https://github.com/ERGO-Code/HiGHS/actions/workflows/build.yml/badge.svg) -->
+
+[![Build Status][fast_build_svg]][fast_build_link] 
+[![Build Status][linux_build_svg]][linux_build_link] 
+[![Build Status][macos_build_svg]][macos_build_link] 
+[![Build Status][windows_build_svg]][windows_build_link] 
+\
 [![Conan Center](https://img.shields.io/conan/v/highs)](https://conan.io/center/recipes/highs)
+\
 [![PyPi](https://img.shields.io/pypi/v/highspy.svg)](https://pypi.python.org/pypi/highspy)
 [![PyPi](https://img.shields.io/pypi/dm/highspy.svg)](https://pypi.python.org/pypi/highspy)
+\
+[![NuGet version](https://img.shields.io/nuget/v/Highs.Native.svg)](https://www.nuget.org/packages/Highs.Native)
+[![NuGet download](https://img.shields.io/nuget/dt/Highs.Native.svg)](https://www.nuget.org/packages/Highs.Native)
 
-## Table of Contents
+[fast_build_svg]: https://github.com/ERGO-Code/HiGHS/actions/workflows/build-fast.yml/badge.svg
+[fast_build_link]: https://github.com/ERGO-Code/HiGHS/actions/workflows/build-fast.yml
+[linux_build_svg]: https://github.com/ERGO-Code/HiGHS/actions/workflows/build-linux.yml/badge.svg
+[linux_build_link]: https://github.com/ERGO-Code/HiGHS/actions/workflows/build-linux.yml
+[macos_build_svg]: https://github.com/ERGO-Code/HiGHS/actions/workflows/build-macos.yml/badge.svg
+[macos_build_link]: https://github.com/ERGO-Code/HiGHS/actions/workflows/build-macos.yml
+[windows_build_svg]: https://github.com/ERGO-Code/HiGHS/actions/workflows/build-windows.yml/badge.svg
+[windows_build_link]: https://github.com/ERGO-Code/HiGHS/actions/workflows/build-windows.yml
 
-- [HiGHS - Linear optimization software](#highs---linear-optimization-software)
-  - [Table of Contents](#table-of-contents)
-  - [About HiGHS](#about-highs)
-  - [Documentation](#documentation)
+- [About HiGHS](#about-highs)
+- [Documentation](#documentation)
+- [Installation](#installation)
+  - [Build from source using CMake](#build-from-source-using-cmake)
+  - [Build with Meson*](#build-with-meson)
+  - [Build with Nix*](#build-with-nix)
   - [Precompiled binaries](#precompiled-binaries)
-  - [Compilation](#compilation)
-  - [Meson](#meson)
-  - [Interfaces](#interfaces)
+- [Running HiGHS](#running-highs)
+- [Interfaces](#interfaces)
   - [Python](#python)
-  - [Google Colab Example](#google-colab-example)
-  - [Reference](#reference)
+  - [C](#c)
+  - [CSharp](#csharp)
+  - [Fortran](#fortran)
+- [Reference](#reference)
 
-About HiGHS
------------
+## About HiGHS
 
 HiGHS is a high performance serial and parallel solver for large scale sparse
 linear optimization problems of the form
@@ -35,13 +54,73 @@ Find out more about HiGHS at https://www.highs.dev.
 
 Although HiGHS is freely available under the MIT license, we would be pleased to learn about users' experience and give advice via email sent to highsopt@gmail.com.
 
-Documentation
--------------
+## Documentation
 
 Documentation is available at https://ergo-code.github.io/HiGHS/.
 
-Precompiled binaries
---------------------
+## Installation
+
+### Build from source using CMake
+
+HiGHS uses CMake as build system, and requires at least version 3.15. To generate build files in a new subdirectory called 'build', run:
+
+```shell
+    cmake -S . -B build
+    cmake --build build
+```
+This installs the executable `bin/highs` and the library `lib/highs`.
+
+To test whether the compilation was successful, change into the build directory and run
+
+```shell
+    ctest
+```
+More details on building with CMake can be found in `HiGHS/cmake/README.md`.
+
+#### Build with Meson
+
+As an alternative, HiGHS can be installed using the `meson` build interface:
+``` sh
+meson setup bbdir -Dwith_tests=True
+meson test -C bbdir
+```
+_The meson build files are provided by the community and are not officially supported by the HiGHS development team._
+
+#### Build with Nix
+
+There is a nix flake that provides the `highs` binary:
+
+```shell
+nix run .
+```
+
+You can even run [without installing
+anything](https://determinate.systems/posts/nix-run/), supposing you have
+installed [nix](https://nixos.org/download.html):
+
+```shell
+nix run github:ERGO-Code/HiGHS
+```
+
+The nix flake also provides the python package:
+
+```shell
+nix build .#highspy
+tree result/
+```
+
+And a devShell for testing it:
+
+```shell
+nix develop .#highspy
+python
+>>> import highspy
+>>> highspy.Highs()
+```
+
+_The nix build files are provided by the community and are not officially supported by the HiGHS development team._
+
+### Precompiled binaries
 
 Precompiled static executables are available for a variety of platforms at
 https://github.com/JuliaBinaryWrappers/HiGHSstatic_jll.jl/releases
@@ -50,110 +129,105 @@ _These binaries are provided by the Julia community and are not officially suppo
 
 See https://ergo-code.github.io/HiGHS/stable/installation/#Precompiled-Binaries.
 
-Compilation
------------
-
-HiGHS uses CMake as build system, and requires at least version 3.15. First setup a build folder and call CMake as follows
-
-    mkdir build
-    cd build
-    cmake ..
-
-Then compile the code using
-
-    cmake --build .
-
-This installs the executable `bin/highs`.
-
-As an alternative it is also possible to let cmake create the build folder and thus build everything from the HiGHS directory, as follows
-
-    cmake -S . -B build
-    cmake --build build
-
-
-To test whether the compilation was successful, run
-
-    ctest
+## Running HiGHS
 
 HiGHS can read MPS files and (CPLEX) LP files, and the following command
 solves the model in `ml.mps`
 
+```shell
     highs ml.mps
-
-HiGHS is installed using the command
-
-    cmake --install .
-
-with the optional setting of `--prefix <prefix>  = The installation prefix CMAKE_INSTALL_PREFIX` if it is to be installed anywhere other than the default location.
-
-Meson
------
-
-HiGHs can also use the `meson` build interface:
-
-``` sh
-meson setup bbdir -Dwith_tests=True
-meson test -C bbdir
 ```
+#### Command line options
 
+When HiGHS is run from the command line, some fundamental option values may be
+specified directly. Many more may be specified via a file. Formally, the usage
+is:
 
-Interfaces
-----------
+```
+$ bin/highs --help
+HiGHS options
+Usage:
+  bin/highs [OPTION...] [file]
 
-There are HiGHS interfaces for C, C#, FORTRAN, and Python in [HiGHS/src/interfaces](https://github.com/ERGO-Code/HiGHS/blob/master/src/interfaces), with example driver files in [HiGHS/examples](https://github.com/ERGO-Code/HiGHS/blob/master/examples). More on language and modelling interfaces can be found at https://ergo-code.github.io/HiGHS/stable/interfaces/other/.
+      --model_file arg          File of model to solve.
+      --read_solution_file arg  File of solution to read.
+      --options_file arg        File containing HiGHS options.
+      --presolve arg            Presolve: "choose" by default - "on"/"off"
+                                are alternatives.
+      --solver arg              Solver: "choose" by default - "simplex"/"ipm"
+                                are alternatives.
+      --parallel arg            Parallel solve: "choose" by default -
+                                "on"/"off" are alternatives.
+      --run_crossover arg       Run crossover: "on" by default -
+                                "choose"/"off" are alternatives.
+      --time_limit arg          Run time limit (seconds - double).
+      --solution_file arg       File for writing out model solution.
+      --write_model_file arg    File for writing out model.
+      --random_seed arg         Seed to initialize random number generation.
+      --ranging arg             Compute cost, bound, RHS and basic solution
+                                ranging.
+      --version                 Print version.
+  -h, --help                    Print help.
+```
+For a full list of options, see the [options page](https://ergo-code.github.io/HiGHS/stable/options/definitions/) of the documentation website.
+
+## Interfaces
+
+There are HiGHS interfaces for C, C#, FORTRAN, and Python in `HiGHS/src/interfaces`, with example driver files in `HiGHS/examples/`. More on language and modelling interfaces can be found at https://ergo-code.github.io/HiGHS/stable/interfaces/other/.
 
 We are happy to give a reasonable level of support via email sent to highsopt@gmail.com.
 
-Python
-------
+### Python
 
-There are two ways to build the Python interface to HiGHS.
+The python package `highspy` is a thin wrapper around HiGHS and is available on [PyPi](https://pypi.org/project/highspy/). It can be easily installed via `pip` by running
 
-__From PyPi__
+```shell
+$ pip install highspy
+```
 
-HiGHS has been added to PyPi, so should be installable using the command
+Alternatively, `highspy` can be built from source.  Download the HiGHS source code and run
 
-    pip install highspy
+```shell
+pip install .
+```
+from the root directory.
 
-The installation can be tested using the example [minimal.py](https://github.com/ERGO-Code/HiGHS/blob/master/examples/minimal.py), yielding the output
+The HiGHS C++ library no longer needs to be separately installed. The python package `highspy` depends on the `numpy` package and `numpy` will be installed as well, if it is not already present.
 
-    Running HiGHS 1.5.0 [date: 2023-02-22, git hash: d041b3da0]
-    Copyright (c) 2023 HiGHS under MIT licence terms
-    Presolving model
-    2 rows, 2 cols, 4 nonzeros
-    0 rows, 0 cols, 0 nonzeros
-    0 rows, 0 cols, 0 nonzeros
-    Presolve : Reductions: rows 0(-2); columns 0(-2); elements 0(-4) - Reduced to empty
-    Solving the original LP from the solution after postsolve
-    Model   status      : Optimal
-    Objective value     :  1.0000000000e+00
-    HiGHS run time      :          0.00
+The installation can be tested using the small example `HiGHS/examples/call_highs_from_python_highspy.py`.
 
-or the more didactic [call_highs_from_python.py](https://github.com/ERGO-Code/HiGHS/blob/master/examples/call_highs_from_python.py).
+The [Google Colab Example Notebook](https://colab.research.google.com/drive/1JmHF53OYfU-0Sp9bzLw-D2TQyRABSjHb?usp=sharing) also demonstrates how to call `highspy`.
 
-__Directly__
+### C 
+The C API is in `HiGHS/src/interfaces/highs_c_api.h`. It is included in the default build. For more details, check out the documentation website https://ergo-code.github.io/HiGHS/.
 
-In order to build the Python interface, build and install the HiGHS
-library as described above, ensure the shared library is in the
-`LD_LIBRARY_PATH` environment variable, and then run
+### CSharp
 
-    pip install ./
+The nuget package Highs.Native is on https://www.nuget.org, at https://www.nuget.org/packages/Highs.Native/. 
 
-from the HiGHS directory.
+It can be added to your C# project with `dotnet`
 
-You may also require
+```shell
+dotnet add package Highs.Native --version 1.7.2
+```
 
-* `pip install pybind11`
-* `pip install pyomo`
+The nuget package contains runtime libraries for 
 
-The Python interface can then be tested as above.
+* `win-x64`
+* `win-x32`
+* `linux-x64`
+* `linux-arm64`
+* `macos-x64`
+* `macos-arm64`
 
-Google Colab Example
------------------------------
-The [Google Colab Example Notebook](https://colab.research.google.com/drive/1JmHF53OYfU-0Sp9bzLw-D2TQyRABSjHb?usp=sharing) demonstrates how to call HiGHS via the Python interface `highspy`.
+Details for building locally can be found in `nuget/README.md`.
 
-Reference
----------
+### Fortran 
+
+The Fortran API is in `HiGHS/src/interfaces/highs_fortran_api.f90`. It is *not* included in the default build. For more details, check out the documentation website https://ergo-code.github.io/HiGHS/.
+
+
+## Reference
 
 If you use HiGHS in an academic context, please acknowledge this and cite the following article.
 

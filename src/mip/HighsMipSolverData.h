@@ -2,7 +2,7 @@
 /*                                                                       */
 /*    This file is part of the HiGHS linear optimization suite           */
 /*                                                                       */
-/*    Written and engineered 2008-2023 by Julian Hall, Ivet Galabova,    */
+/*    Written and engineered 2008-2024 by Julian Hall, Ivet Galabova,    */
 /*    Leona Gottwald and Michael Feldmeier                               */
 /*                                                                       */
 /*    Available as open-source under the MIT License                     */
@@ -128,6 +128,46 @@ struct HighsMipSolverData {
         implications(mipsolver),
         heuristics(mipsolver),
         objectiveFunction(mipsolver),
+        presolve_status(HighsPresolveStatus::kNotSet),
+        cliquesExtracted(false),
+        rowMatrixSet(false),
+        analyticCenterComputed(false),
+        analyticCenterStatus(HighsModelStatus::kNotset),
+        detectSymmetries(false),
+        numRestarts(0),
+        numRestartsRoot(0),
+        numCliqueEntriesAfterPresolve(0),
+        numCliqueEntriesAfterFirstPresolve(0),
+        feastol(0.0),
+        epsilon(0.0),
+        heuristic_effort(0.0),
+        dispfreq(0),
+        firstlpsolobj(-kHighsInf),
+        rootlpsolobj(-kHighsInf),
+        numintegercols(0),
+        maxTreeSizeLog2(0),
+        pruned_treeweight(0),
+        avgrootlpiters(0.0),
+        last_disptime(0.0),
+        firstrootlpiters(0),
+        num_nodes(0),
+        num_leaves(0),
+        num_leaves_before_run(0),
+        num_nodes_before_run(0),
+        total_lp_iterations(0),
+        heuristic_lp_iterations(0),
+        sepa_lp_iterations(0),
+        sb_lp_iterations(0),
+        total_lp_iterations_before_run(0),
+        heuristic_lp_iterations_before_run(0),
+        sepa_lp_iterations_before_run(0),
+        sb_lp_iterations_before_run(0),
+        num_disp_lines(0),
+        numImprovingSols(0),
+        lower_bound(-kHighsInf),
+        upper_bound(kHighsInf),
+        upper_limit(kHighsInf),
+        optimality_limit(kHighsInf),
         debugSolution(mipsolver) {
     domain.addCutpool(cutpool);
     domain.addConflictPool(conflictPool);
@@ -156,11 +196,13 @@ struct HighsMipSolverData {
   void init();
   void basisTransfer();
   void checkObjIntegrality();
-  void runPresolve();
+  void runPresolve(const HighsInt presolve_reduction_limit);
   void setupDomainPropagation();
-  void saveReportMipSolution(const double new_upper_limit);
+  void saveReportMipSolution(const double new_upper_limit = -kHighsInf);
   void runSetup();
-  double transformNewIncumbent(const std::vector<double>& sol);
+  double transformNewIntegerFeasibleSolution(
+      const std::vector<double>& sol,
+      const bool possibly_store_as_new_incumbent = true);
   double percentageInactiveIntegers() const;
   void performRestart();
   bool checkSolution(const std::vector<double>& solution) const;
@@ -187,6 +229,7 @@ struct HighsMipSolverData {
   void limitsToBounds(double& dual_bound, double& primal_bound,
                       double& mip_rel_gap) const;
   bool interruptFromCallbackWithData(const int callback_type,
+                                     const double mipsolver_objective_value,
                                      const std::string message = "") const;
 };
 

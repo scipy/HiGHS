@@ -2,7 +2,7 @@
 /*                                                                       */
 /*    This file is part of the HiGHS linear optimization suite           */
 /*                                                                       */
-/*    Written and engineered 2008-2023 by Julian Hall, Ivet Galabova,    */
+/*    Written and engineered 2008-2024 by Julian Hall, Ivet Galabova,    */
 /*    Leona Gottwald and Michael Feldmeier                               */
 /*                                                                       */
 /*    Available as open-source under the MIT License                     */
@@ -19,6 +19,13 @@
 #include <vector>
 
 #include "lp_data/HighsOptions.h"
+
+const HighsInt kIndexCollectionCreateOk = 0;
+const HighsInt kIndexCollectionCreateIllegalInterval = 1;
+const HighsInt kIndexCollectionCreateIllegalSetSize = 1;
+const HighsInt kIndexCollectionCreateIllegalSetDimension = 2;
+const HighsInt kIndexCollectionCreateIllegalSetOrder = 3;
+const HighsInt kIndexCollectionCreateIllegalMaskSize = 1;
 
 void highsSparseTranspose(HighsInt numRow, HighsInt numCol,
                           const std::vector<HighsInt>& Astart,
@@ -81,15 +88,15 @@ const double awful_regression_error = 2.0;
 const double bad_regression_error = 0.2;
 const double fair_regression_error = 0.02;
 
-bool create(HighsIndexCollection& index_collection, const HighsInt from_col,
-            const HighsInt to_col, const HighsInt dimension);
+HighsInt create(HighsIndexCollection& index_collection, const HighsInt from_col,
+                const HighsInt to_col, const HighsInt dimension);
 
-bool create(HighsIndexCollection& index_collection,
-            const HighsInt num_set_entries, const HighsInt* set,
-            const HighsInt dimension);
+HighsInt create(HighsIndexCollection& index_collection,
+                const HighsInt num_set_entries, const HighsInt* set,
+                const HighsInt dimension);
 
-void create(HighsIndexCollection& index_collection, const HighsInt* mask,
-            const HighsInt dimension);
+HighsInt create(HighsIndexCollection& index_collection, const HighsInt* mask,
+                const HighsInt dimension);
 
 bool ok(const HighsIndexCollection& index_collection);
 

@@ -1,7 +1,5 @@
 # HiGHS - High Performance Optimization Software
 
-[![Build Status](https://github.com/ERGO-Code/HiGHS/workflows/build/badge.svg)](https://github.com/ERGO-Code/HiGHS/actions?query=workflow%3Abuild+branch%3Amaster)
-
 !!! warning
     This HiGHS documentation is a work in progress.
 
@@ -59,7 +57,7 @@ The C interface cannot make use of the C++ structures and enums, and its methods
 ## Solution algorithms
 
 For LPs, HiGHS has implementations of both the revised simplex and interior
-point methods. MIPs are solved by branch-and-price, and QPs by active set.
+point methods. MIPs are solved by branch-and-cut, and QPs by active set.
 
 ## Citing HiGHS
 

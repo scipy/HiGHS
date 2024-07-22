@@ -2,7 +2,7 @@
 /*                                                                       */
 /*    This file is part of the HiGHS linear optimization suite           */
 /*                                                                       */
-/*    Written and engineered 2008-2023 by Julian Hall, Ivet Galabova,    */
+/*    Written and engineered 2008-2024 by Julian Hall, Ivet Galabova,    */
 /*    Leona Gottwald and Michael Feldmeier                               */
 /*                                                                       */
 /*    Available as open-source under the MIT License                     */
@@ -24,7 +24,7 @@
 #include "util/stringutil.h"
 
 #ifdef ZLIB_FOUND
-#include "zstr/zstr.hpp"
+#include "../extern/zstr/zstr.hpp"
 #endif
 
 using std::map;
@@ -339,7 +339,7 @@ FilereaderRetcode readMps(
   colUpper.assign(numCol, kHighsInf);
   if (flag[0] == 'B') {
     while (load_mpsLine(file, integerCol, lmax, line, flag, data)) {
-      // Find the column index associated woith the name "data[2]". If
+      // Find the column index associated with the name "data[2]". If
       // the name is in colIndex then the value stored is the true
       // column index plus one. Otherwise 0 will be returned.
       HighsInt iCol = colIndex[data[2]] - 1;
@@ -539,8 +539,8 @@ HighsStatus writeModelAsMps(const HighsOptions& options,
   bool warning_found = false;
   const HighsLp& lp = model.lp_;
   const HighsHessian& hessian = model.hessian_;
-  bool have_col_names = lp.col_names_.size();
-  bool have_row_names = lp.row_names_.size();
+  bool have_col_names = (lp.col_names_.size() != 0);
+  bool have_row_names = (lp.row_names_.size() != 0);
   std::vector<std::string> local_col_names;
   std::vector<std::string> local_row_names;
   local_col_names.resize(lp.num_col_);
@@ -564,7 +564,7 @@ HighsStatus writeModelAsMps(const HighsOptions& options,
   HighsStatus row_name_status =
       normaliseNames(options.log_options, "row", lp.num_row_, local_row_names,
                      max_row_name_length);
-  if (row_name_status == HighsStatus::kError) return col_name_status;
+  if (row_name_status == HighsStatus::kError) return row_name_status;
   warning_found = row_name_status == HighsStatus::kWarning || warning_found;
 
   HighsInt max_name_length = std::max(max_col_name_length, max_row_name_length);
@@ -633,6 +633,7 @@ HighsStatus writeMps(
         "Cannot write fixed MPS with names of length (up to) %" HIGHSINT_FORMAT
         "\n",
         max_name_length);
+    fclose(file);
     return HighsStatus::kError;
   }
   assert(objective_name != "");
@@ -905,7 +906,7 @@ HighsStatus writeMps(
             } else {
               if (!highs_isInfinity(-lb)) {
                 // Finite lower bound. No need to state this if LB is
-                // zero unless UB is infinte
+                // zero unless UB is infinite
                 if (lb || highs_isInfinity(ub))
                   fprintf(file, " LI BOUND     %-8s  %.10g\n",
                           col_names[c_n].c_str(), lb);

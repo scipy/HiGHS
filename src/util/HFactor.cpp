@@ -2,7 +2,7 @@
 /*                                                                       */
 /*    This file is part of the HiGHS linear optimization suite           */
 /*                                                                       */
-/*    Written and engineered 2008-2023 by Julian Hall, Ivet Galabova,    */
+/*    Written and engineered 2008-2024 by Julian Hall, Ivet Galabova,    */
 /*    Leona Gottwald and Michael Feldmeier                               */
 /*                                                                       */
 /*    Available as open-source under the MIT License                     */
@@ -16,8 +16,8 @@
 #include <cassert>
 #include <iostream>
 
+#include "../extern/pdqsort/pdqsort.h"
 #include "lp_data/HConst.h"
-#include "pdqsort/pdqsort.h"
 #include "util/FactorTimer.h"
 #include "util/HFactorDebug.h"
 #include "util/HVector.h"
@@ -807,8 +807,8 @@ void HFactor::buildSimple() {
     if (nworkLast == nwork) break;
   }
   if (report_anything) reportLu(kReportLuBoth, false);
-  t2_store_l = l_index.size() - t2_store_l;
-  t2_store_u = u_index.size() - t2_store_u;
+  t2_store_l = static_cast<double>(l_index.size()) - t2_store_l;
+  t2_store_u = static_cast<double>(u_index.size()) - t2_store_u;
   t2_store_p = t2_store_p - nwork;
 
   build_synthetic_tick +=
@@ -892,7 +892,7 @@ HighsInt HFactor::buildKernel() {
     if (nwork == check_nwork) {
       reportAsm();
     }
-    // Detemine whether to return due to exceeding the time limit
+    // Determine whether to return due to exceeding the time limit
     if (check_for_timeout && search_k % timer_frequency == 0) {
       double current_time = build_timer_->readRunHighsClock();
       double time_difference = current_time - previous_iteration_time;
@@ -1039,7 +1039,12 @@ HighsInt HFactor::buildKernel() {
       }
     }
     // 1.4. If we found nothing: tell singular
-    if (!foundPivot) {
+    if (iRowPivot < 0) {
+      // To detect the absence of a pivot, it should be sufficient
+      // that iRowPivot is (still) -1, but add sanity asserts that
+      // jColPivot is (still) -1 and foundPivot is false
+      assert(jColPivot < 0);
+      assert(!foundPivot);
       rank_deficiency = nwork + 1;
       highsLogDev(log_options, HighsLogType::kWarning,
                   "Factorization identifies rank deficiency of %d\n",
@@ -1274,7 +1279,6 @@ void HFactor::buildHandleRankDeficiency() {
   // * Less than the rank deficiency of the basis matrix if num_basic < num_row
   //
   //
-  const HighsInt basic_index_rank_deficiency = rank_deficiency;
   if (num_basic < num_row) {
     rank_deficiency += num_row - num_basic;
   }
@@ -2113,7 +2117,7 @@ void HFactor::updateCFT(HVector* aq, HVector* ep, HighsInt* iRow
       dwork[p_row] = value;
     }
 
-    // 3. Store the partial FTRAN result to matirx U
+    // 3. Store the partial FTRAN result to matrix U
     double ppaq = dwork[iRow[cp]];  // pivot of the partial aq
     dwork[iRow[cp]] = 0;
     HighsInt u_countX = t_start[cp];

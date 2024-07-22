@@ -69,6 +69,10 @@ void testSolver(Highs& highs, const std::string solver,
     REQUIRE(info.crossover_iteration_count ==
             default_iteration_count.crossover);
   }
+  // Following simplex or IPM+Crossover, nonbasic variables are on bounds
+  // complementarity_violation
+  REQUIRE(info.max_complementarity_violation == 0);
+  REQUIRE(info.sum_complementarity_violations == 0);
 
   // Only perform the time limit test if the solve time is large enough
   const double min_run_time_for_test = 0.001;
@@ -279,7 +283,7 @@ TEST_CASE("LP-solver", "[highs_lp_solver]") {
   const HighsInfo& info = highs.getInfo();
   REQUIRE(info.num_dual_infeasibilities == 0);
 
-  REQUIRE(info.simplex_iteration_count == 476);  // 444);
+  REQUIRE(info.simplex_iteration_count == 472);  // 476);  // 444);
 
   HighsModelStatus model_status = highs.getModelStatus();
   REQUIRE(model_status == HighsModelStatus::kOptimal);
@@ -292,7 +296,7 @@ TEST_CASE("LP-solver", "[highs_lp_solver]") {
   return_status = highs.run();
   REQUIRE(return_status == HighsStatus::kOk);
 
-  REQUIRE(info.simplex_iteration_count == 621);  // 584);  //
+  REQUIRE(info.simplex_iteration_count == 592);  // 621);  // 584);  //
 }
 
 TEST_CASE("mip-with-lp-solver", "[highs_lp_solver]") {

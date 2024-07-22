@@ -2,7 +2,7 @@
 /*                                                                       */
 /*    This file is part of the HiGHS linear optimization suite           */
 /*                                                                       */
-/*    Written and engineered 2008-2023 by Julian Hall, Ivet Galabova,    */
+/*    Written and engineered 2008-2024 by Julian Hall, Ivet Galabova,    */
 /*    Leona Gottwald and Michael Feldmeier                               */
 /*                                                                       */
 /*    Available as open-source under the MIT License                     */
@@ -57,6 +57,13 @@ HighsStatus assessBounds(const HighsOptions& options, const char* type,
 
 HighsStatus cleanBounds(const HighsOptions& options, HighsLp& lp);
 
+bool boundScaleOk(const std::vector<double>& lower,
+                  const std::vector<double>& upper, const HighsInt bound_scale,
+                  const double infinite_bound);
+
+bool costScaleOk(const std::vector<double>& cost, const HighsInt cost_scale,
+                 const double infinite_cost);
+
 HighsStatus assessSemiVariables(HighsLp& lp, const HighsOptions& options,
                                 bool& made_semi_variable_mods);
 void relaxSemiVariables(HighsLp& lp, bool& made_semi_variable_mods);
@@ -78,6 +85,8 @@ HighsStatus applyScalingToLpCol(HighsLp& lp, const HighsInt col,
 HighsStatus applyScalingToLpRow(HighsLp& lp, const HighsInt row,
                                 const double rowScale);
 
+void unscaleSolution(HighsSolution& solution, const HighsScale& scale);
+
 void appendColsToLpVectors(HighsLp& lp, const HighsInt num_new_col,
                            const vector<double>& colCost,
                            const vector<double>& colLower,
@@ -86,16 +95,6 @@ void appendColsToLpVectors(HighsLp& lp, const HighsInt num_new_col,
 void appendRowsToLpVectors(HighsLp& lp, const HighsInt num_new_row,
                            const vector<double>& rowLower,
                            const vector<double>& rowUpper);
-
-void deleteLpCols(HighsLp& lp, const HighsIndexCollection& index_collection);
-
-void deleteColsFromLpVectors(HighsLp& lp, HighsInt& new_num_col,
-                             const HighsIndexCollection& index_collection);
-
-void deleteLpRows(HighsLp& lp, const HighsIndexCollection& index_collection);
-
-void deleteRowsFromLpVectors(HighsLp& lp, HighsInt& new_num_row,
-                             const HighsIndexCollection& index_collection);
 
 void deleteScale(vector<double>& scale,
                  const HighsIndexCollection& index_collection);
@@ -231,15 +230,14 @@ HighsStatus assessLpPrimalSolution(const HighsOptions& options,
                                    const HighsSolution& solution, bool& valid,
                                    bool& integral, bool& feasible);
 
-HighsStatus calculateRowValues(const HighsLp& lp,
-                               const std::vector<double>& col_value,
-                               std::vector<double>& row_value);
-HighsStatus calculateRowValues(const HighsLp& lp, HighsSolution& solution);
+HighsStatus calculateRowValuesQuad(const HighsLp& lp,
+                                   const std::vector<double>& col_value,
+                                   std::vector<double>& row_value,
+                                   const HighsInt report_row = -1);
 HighsStatus calculateRowValuesQuad(const HighsLp& lp, HighsSolution& solution,
                                    const HighsInt report_row = -1);
-HighsStatus calculateColDuals(const HighsLp& lp, HighsSolution& solution);
 
-bool isBoundInfeasible(const HighsLogOptions& log_options, const HighsLp& lp);
+HighsStatus calculateColDualsQuad(const HighsLp& lp, HighsSolution& solution);
 
 bool isColDataNull(const HighsLogOptions& log_options,
                    const double* usr_col_cost, const double* usr_col_lower,

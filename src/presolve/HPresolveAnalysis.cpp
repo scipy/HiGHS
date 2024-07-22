@@ -2,7 +2,7 @@
 /*                                                                       */
 /*    This file is part of the HiGHS linear optimization suite           */
 /*                                                                       */
-/*    Written and engineered 2008-2023 by Julian Hall, Ivet Galabova,    */
+/*    Written and engineered 2008-2024 by Julian Hall, Ivet Galabova,    */
 /*    Leona Gottwald and Michael Feldmeier                               */
 /*                                                                       */
 /*    Available as open-source under the MIT License                     */
@@ -143,7 +143,7 @@ void HPresolveAnalysis::stopPresolveRuleLog(const HighsInt rule_type) {
   presolve_log_.rule[rule_type].col_removed += num_removed_col;
   presolve_log_.rule[rule_type].row_removed += num_removed_row;
 
-  // Set the rule type to be illegal to idicate that stop has been
+  // Set the rule type to be illegal to indicate that stop has been
   // called, and update the record of num_deleted_rows/cols
   log_rule_type_ = kPresolveRuleIllegal;
   num_deleted_rows0_ = *numDeletedRows;

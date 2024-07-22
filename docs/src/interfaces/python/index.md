@@ -6,7 +6,7 @@ HiGHS is available as `highspy` on [PyPi](https://pypi.org/project/highspy/).
 
 If `highspy` is not already installed, run:
 
-```bash
+```shell
 $ pip install highspy
 ```
 
@@ -32,6 +32,14 @@ HiGHS must be initialized before making calls to the HiGHS Python library:
 ```python
 h = highspy.Highs()
 ```
+
+## Logging
+
+When called from C++, or via the C API, console logging is duplicated
+to a file that, by default, is `Highs.log`. However, to channel
+logging to a file from `highspy`, the name of the file needs to be
+specified explicitly via a call to `setOptionValue('log_file',
+'foo.bar')`.
 
 ## Methods
 

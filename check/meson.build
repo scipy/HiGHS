@@ -60,17 +60,21 @@ foreach test : test_array
        executable(test.get(0),
           sources : ['TestMain.cpp',
                      'Avgas.cpp',
-                     test.get(1)],
+                     test.get(1),
+                     highs_conf_file],
           dependencies : _deps,
-          link_with : _linkto ,
+          link_with : highslib,
           cpp_args : _args,
           include_directories: _incdirs,
                  ),
+       timeout: 300,
       )
 endforeach
 
 test('test_capi',
-    executable('capi_unit_tests', 'TestCAPI.c',
-  include_directories: _incdirs,
-  link_with : _linkto ,
-))
+     executable('capi_unit_tests',
+                sources: ['TestCAPI.c', highs_conf_file],
+                include_directories: _incdirs,
+                link_with : highslib,
+               )
+    )

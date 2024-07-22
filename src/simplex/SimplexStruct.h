@@ -2,7 +2,7 @@
 /*                                                                       */
 /*    This file is part of the HiGHS linear optimization suite           */
 /*                                                                       */
-/*    Written and engineered 2008-2023 by Julian Hall, Ivet Galabova,    */
+/*    Written and engineered 2008-2024 by Julian Hall, Ivet Galabova,    */
 /*    Leona Gottwald and Michael Feldmeier                               */
 /*                                                                       */
 /*    Available as open-source under the MIT License                     */
@@ -25,7 +25,7 @@ struct SimplexBasis {
   // The basis for the simplex method consists of basicIndex,
   // nonbasicFlag and nonbasicMove. If HighsSimplexStatus has_basis
   // is true then it is assumed that basicIndex_ and nonbasicFlag_ are
-  // self-consistent and correpond to the dimensions of an associated
+  // self-consistent and correspond to the dimensions of an associated
   // HighsLp, but the basis matrix B is not necessarily nonsingular.
   std::vector<HighsInt> basicIndex_;
   std::vector<int8_t> nonbasicFlag_;

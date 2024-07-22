@@ -2,7 +2,7 @@
 /*                                                                       */
 /*    This file is part of the HiGHS linear optimization suite           */
 /*                                                                       */
-/*    Written and engineered 2008-2023 by Julian Hall, Ivet Galabova,    */
+/*    Written and engineered 2008-2024 by Julian Hall, Ivet Galabova,    */
 /*    Leona Gottwald and Michael Feldmeier                               */
 /*                                                                       */
 /*    Available as open-source under the MIT License                     */
@@ -34,8 +34,8 @@ HighsLoadOptionsStatus loadOptionsFromFile(
       line_count++;
       if (line.size() == 0 || line[0] == '#') continue;
 
-      HighsInt equals = line.find_first_of("=");
-      if (equals < 0 || equals >= (HighsInt)line.size() - 1) {
+      size_t equals = line.find_first_of("=");
+      if (equals == std::string::npos || equals + 1 >= line.size()) {
         highsLogUser(report_log_options, HighsLogType::kError,
                      "Error on line %" HIGHSINT_FORMAT " of options file.\n",
                      line_count);
@@ -46,12 +46,16 @@ HighsLoadOptionsStatus loadOptionsFromFile(
       trim(option, non_chars);
       trim(value, non_chars);
       if (setLocalOptionValue(report_log_options, option, options.log_options,
-                              options.records, value) != OptionStatus::kOk)
+                              options.records, value) != OptionStatus::kOk) {
+        highsLogUser(report_log_options, HighsLogType::kError,
+                     "Cannot read value \"%s\" for option \"%s\"\n",
+                     value.c_str(), option.c_str());
         return HighsLoadOptionsStatus::kError;
+      }
     }
   } else {
     highsLogUser(report_log_options, HighsLogType::kError,
-                 "Options file not found.\n");
+                 "Options file not found\n");
     return HighsLoadOptionsStatus::kError;
   }
 

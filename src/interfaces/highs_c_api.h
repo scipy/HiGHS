@@ -2,7 +2,7 @@
 /*                                                                       */
 /*    This file is part of the HiGHS linear optimization suite           */
 /*                                                                       */
-/*    Written and engineered 2008-2023 by Julian Hall, Ivet Galabova,    */
+/*    Written and engineered 2008-2024 by Julian Hall, Ivet Galabova,    */
 /*    Leona Gottwald and Michael Feldmeier                               */
 /*                                                                       */
 /*    Available as open-source under the MIT License                     */
@@ -10,8 +10,20 @@
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 #ifndef HIGHS_C_API
 #define HIGHS_C_API
-
-//#include "util/HighsInt.h"
+//
+// Welcome to the HiGHS C API!
+//
+// The simplest way to use HiGHS to solve an LP, MIP or QP from C is
+// to pass the problem data to the appropriate method Highs_lpCall,
+// Highs_mipCall or Highs_qpCall, and these methods return the
+// appropriate solution information
+//
+// For sophisticated applications, where esoteric solutiuon
+// information is needed, or if a sequence of modified models need to
+// be solved, use the Highs_create method to generate a pointer to an
+// instance of the C++ Highs class, and then use any of a large number
+// of models for which this pointer is the first parameter.
+//
 #include "lp_data/HighsCallbackStruct.h"
 
 const HighsInt kHighsMaximumStringLength = 512;
@@ -60,6 +72,7 @@ const HighsInt kHighsPresolveStatusReducedToEmpty = 4;
 const HighsInt kHighsPresolveStatusTimeout = 5;
 const HighsInt kHighsPresolveStatusNullError = 6;
 const HighsInt kHighsPresolveStatusOptionsError = 7;
+const HighsInt kHighsPresolveStatusOutOfMemory = 8;
 
 const HighsInt kHighsModelStatusNotset = 0;
 const HighsInt kHighsModelStatusLoadError = 1;
@@ -89,9 +102,38 @@ const HighsInt kHighsBasisStatusNonbasic = 4;
 const HighsInt kHighsCallbackLogging = 0;
 const HighsInt kHighsCallbackSimplexInterrupt = 1;
 const HighsInt kHighsCallbackIpmInterrupt = 2;
-const HighsInt kHighsCallbackMipImprovingSolution = 3;
-const HighsInt kHighsCallbackMipLogging = 4;
-const HighsInt kHighsCallbackMipInterrupt = 5;
+const HighsInt kHighsCallbackMipSolution = 3;
+const HighsInt kHighsCallbackMipImprovingSolution = 4;
+const HighsInt kHighsCallbackMipLogging = 5;
+const HighsInt kHighsCallbackMipInterrupt = 6;
+const HighsInt kHighsCallbackMipGetCutPool = 7;
+const HighsInt kHighsCallbackMipDefineLazyConstraints = 8;
+
+const char* const kHighsCallbackDataOutLogTypeName = "log_type";
+const char* const kHighsCallbackDataOutRunningTimeName = "running_time";
+const char* const kHighsCallbackDataOutSimplexIterationCountName =
+    "simplex_iteration_count";
+const char* const kHighsCallbackDataOutIpmIterationCountName =
+    "ipm_iteration_count";
+const char* const kHighsCallbackDataOutPdlpIterationCountName =
+    "pdlp_iteration_count";
+const char* const kHighsCallbackDataOutObjectiveFunctionValueName =
+    "objective_function_value";
+const char* const kHighsCallbackDataOutMipNodeCountName = "mip_node_count";
+const char* const kHighsCallbackDataOutMipTotalLpIterationsName =
+    "mip_total_lp_iterations";
+const char* const kHighsCallbackDataOutMipPrimalBoundName = "mip_primal_bound";
+const char* const kHighsCallbackDataOutMipDualBoundName = "mip_dual_bound";
+const char* const kHighsCallbackDataOutMipGapName = "mip_gap";
+const char* const kHighsCallbackDataOutMipSolutionName = "mip_solution";
+const char* const kHighsCallbackDataOutCutpoolNumColName = "cutpool_num_col";
+const char* const kHighsCallbackDataOutCutpoolNumCutName = "cutpool_num_cut";
+const char* const kHighsCallbackDataOutCutpoolNumNzName = "cutpool_num_nz";
+const char* const kHighsCallbackDataOutCutpoolStartName = "cutpool_start";
+const char* const kHighsCallbackDataOutCutpoolIndexName = "cutpool_index";
+const char* const kHighsCallbackDataOutCutpoolValueName = "cutpool_value";
+const char* const kHighsCallbackDataOutCutpoolLowerName = "cutpool_lower";
+const char* const kHighsCallbackDataOutCutpoolUpperName = "cutpool_upper";
 
 #ifdef __cplusplus
 extern "C" {
@@ -262,13 +304,6 @@ HighsInt Highs_versionPatch(void);
 const char* Highs_githash(void);
 
 /**
- * Return the HiGHS compilation date.
- *
- * @returns Thse HiGHS compilation date.
- */
-const char* Highs_compilationDate(void);
-
-/**
  * Read a model from `filename` into `highs`.
  *
  * @param highs     A pointer to the Highs instance.
@@ -287,6 +322,16 @@ HighsInt Highs_readModel(void* highs, const char* filename);
  * @returns A `kHighsStatus` constant indicating whether the call succeeded.
  */
 HighsInt Highs_writeModel(void* highs, const char* filename);
+
+/**
+ * Write the presolved model in `highs` to `filename`.
+ *
+ * @param highs     A pointer to the Highs instance.
+ * @param filename  The filename to write.
+ *
+ * @returns A `kHighsStatus` constant indicating whether the call succeeded.
+ */
+HighsInt Highs_writePresolvedModel(void* highs, const char* filename);
 
 /**
  * Reset the options and then call `clearModel`.
@@ -322,6 +367,15 @@ HighsInt Highs_clearModel(void* highs);
 HighsInt Highs_clearSolver(void* highs);
 
 /**
+ * Presolve a model.
+ *
+ * @param highs     A pointer to the Highs instance.
+ *
+ * @returns A `kHighsStatus` constant indicating whether the call succeeded.
+ */
+HighsInt Highs_presolve(void* highs);
+
+/**
  * Optimize a model. The algorithm used by HiGHS depends on the options that
  * have been set.
  *
@@ -330,6 +384,22 @@ HighsInt Highs_clearSolver(void* highs);
  * @returns A `kHighsStatus` constant indicating whether the call succeeded.
  */
 HighsInt Highs_run(void* highs);
+
+/**
+ * Postsolve a model using a primal (and possibly dual) solution.
+ *
+ * @param highs       A pointer to the Highs instance.
+ * @param col_value   An array of length [num_col] with the column solution
+ *                    values.
+ * @param col_dual    An array of length [num_col] with the column dual
+ *                    values, or a null pointer if not known.
+ * @param row_dual    An array of length [num_row] with the row dual values,
+ *                    or a null pointer if not known.
+ *
+ * @returns A `kHighsStatus` constant indicating whether the call succeeded.
+ */
+HighsInt Highs_postsolve(void* highs, const double* col_value,
+                         const double* col_dual, const double* row_dual);
 
 /**
  * Write the solution information (including dual and basis status, if
@@ -349,7 +419,7 @@ HighsInt Highs_writeSolution(const void* highs, const char* filename);
  * available) to a file in a human-readable format.
  *
  * The method identical to `Highs_writeSolution`, except that the
- * printout is in a human-readiable format.
+ * printout is in a human-readable format.
  *
  * @param highs     A pointer to the Highs instance.
  * @param filename  The name of the file to write the results to.
@@ -437,7 +507,7 @@ HighsInt Highs_passMip(void* highs, const HighsInt num_col,
  * @param q_value     An array of length [q_num_nz] with values of matrix
  *                     entries. If the model is linear, pass NULL.
  * @param integrality An array of length [num_col] containing a `kHighsVarType`
- *                    consatnt for each column.
+ *                    constant for each column.
  *
  * @returns A `kHighsStatus` constant indicating whether the call succeeded.
  */
@@ -967,10 +1037,10 @@ HighsInt Highs_getBasisSolve(const void* highs, const double* rhs,
  *
  * @param highs             A pointer to the Highs instance.
  * @param rhs               The right-hand side vector ``b``
- * @param solution_vector   An array of length [num_row] in whcih to store the
+ * @param solution_vector   An array of length [num_row] in which to store the
  *                          values of the non-zero elements.
  * @param solution_num_nz   The number of non-zeros in the solution.
- * @param solution_index    An array of length [num_row] in whcih to store the
+ * @param solution_index    An array of length [num_row] in which to store the
  *                          indices of the non-zero elements.
  *
  * @returns A `kHighsStatus` constant indicating whether the call succeeded.
@@ -1070,6 +1140,19 @@ HighsInt Highs_setSolution(void* highs, const double* col_value,
                            const double* row_dual);
 
 /**
+ * Set a partial primal solution by passing values for a set of variables
+ *
+ * @param highs       A pointer to the Highs instance.
+ * @param num_entries Number of variables in the set
+ * @param index       Indices of variables in the set
+ * @param value       Values of variables in the set
+ *
+ * @returns A `kHighsStatus` constant indicating whether the call succeeded.
+ */
+HighsInt Highs_setSparseSolution(void* highs, const HighsInt num_entries,
+                                 const HighsInt* index, const double* value);
+
+/**
  * Set the callback method to use for HiGHS
  *
  * @param highs              A pointer to the Highs instance.
@@ -1078,12 +1161,8 @@ HighsInt Highs_setSolution(void* highs, const double* col_value,
  *
  * @returns A `kHighsStatus` constant indicating whether the call succeeded.
  */
-HighsInt Highs_setCallback(
-    void* highs,
-    void (*user_callback)(const int, const char*,
-                          const struct HighsCallbackDataOut*,
-                          struct HighsCallbackDataIn*, void*),
-    void* user_callback_data);
+HighsInt Highs_setCallback(void* highs, HighsCCallbackType user_callback,
+                           void* user_callback_data);
 
 /**
  * Start callback of given type
@@ -1324,6 +1403,15 @@ HighsInt Highs_changeColsIntegralityBySet(void* highs,
  */
 HighsInt Highs_changeColsIntegralityByMask(void* highs, const HighsInt* mask,
                                            const HighsInt* integrality);
+
+/**
+ * Clear the integrality of all columns
+ *
+ * @param highs         A pointer to the Highs instance.
+ *
+ * @returns A `kHighsStatus` constant indicating whether the call succeeded.
+ */
+HighsInt Highs_clearIntegrality(void* highs);
 
 /**
  * Change the objective coefficient of a column.
@@ -1845,6 +1933,15 @@ HighsInt Highs_scaleRow(void* highs, const HighsInt row, const double scaleval);
 double Highs_getInfinity(const void* highs);
 
 /**
+ * Return the size of integers used by HiGHS.
+ *
+ * @param highs     A pointer to the Highs instance.
+ *
+ * @returns The size of integers used by HiGHS.
+ */
+HighsInt Highs_getSizeofHighsInt(const void* highs);
+
+/**
  * Return the number of columns in the model.
  *
  * @param highs     A pointer to the Highs instance.
@@ -1881,6 +1978,35 @@ HighsInt Highs_getNumNz(const void* highs);
 HighsInt Highs_getHessianNumNz(const void* highs);
 
 /**
+ * Return the number of columns in the presolved model.
+ *
+ * @param highs     A pointer to the Highs instance.
+ *
+ * @returns The number of columns in the presolved model.
+ */
+HighsInt Highs_getPresolvedNumCol(const void* highs);
+
+/**
+ * Return the number of rows in the presolved model.
+ *
+ * @param highs     A pointer to the Highs instance.
+ *
+ * @returns The number of rows in the presolved model.
+ */
+HighsInt Highs_getPresolvedNumRow(const void* highs);
+
+/**
+ * Return the number of nonzeros in the constraint matrix of the presolved
+ * model.
+ *
+ * @param highs     A pointer to the Highs instance.
+ *
+ * @returns The number of nonzeros in the constraint matrix of the presolved
+ * model.
+ */
+HighsInt Highs_getPresolvedNumNz(const void* highs);
+
+/**
  * Get the data from a HiGHS model.
  *
  * The input arguments have the same meaning (in a different order) to those
@@ -1907,6 +2033,52 @@ HighsInt Highs_getModel(const void* highs, const HighsInt a_format,
                         HighsInt* integrality);
 
 /**
+ * Get the data from a HiGHS LP.
+ *
+ * The input arguments have the same meaning (in a different order) to those
+ * used in `Highs_passModel`.
+ *
+ * Note that all arrays must be pre-allocated to the correct size before calling
+ * `Highs_getModel`. Use the following query methods to check the appropriate
+ * size:
+ *  - `Highs_getNumCol`
+ *  - `Highs_getNumRow`
+ *  - `Highs_getNumNz`
+ *
+ * @returns A `kHighsStatus` constant indicating whether the call succeeded.
+ */
+HighsInt Highs_getLp(const void* highs, const HighsInt a_format,
+                     HighsInt* num_col, HighsInt* num_row, HighsInt* num_nz,
+                     HighsInt* sense, double* offset, double* col_cost,
+                     double* col_lower, double* col_upper, double* row_lower,
+                     double* row_upper, HighsInt* a_start, HighsInt* a_index,
+                     double* a_value, HighsInt* integrality);
+
+/**
+ * Get the data from a HiGHS presolved LP.
+ *
+ * The input arguments have the same meaning (in a different order) to those
+ * used in `Highs_passModel`.
+ *
+ * Note that all arrays must be pre-allocated to the correct size before calling
+ * `Highs_getModel`. Use the following query methods to check the appropriate
+ * size:
+ *  - `Highs_getPresolvedNumCol`
+ *  - `Highs_getPresolvedNumRow`
+ *  - `Highs_getPresolvedNumNz`
+ *
+ * @returns A `kHighsStatus` constant indicating whether the call succeeded.
+ */
+HighsInt Highs_getPresolvedLp(const void* highs, const HighsInt a_format,
+                              HighsInt* num_col, HighsInt* num_row,
+                              HighsInt* num_nz, HighsInt* sense, double* offset,
+                              double* col_cost, double* col_lower,
+                              double* col_upper, double* row_lower,
+                              double* row_upper, HighsInt* a_start,
+                              HighsInt* a_index, double* a_value,
+                              HighsInt* integrality);
+
+/**
  * Set a primal (and possibly dual) solution as a starting point, then run
  * crossover to compute a basic feasible solution.
  *
@@ -1930,7 +2102,7 @@ HighsInt Highs_crossover(void* highs, const int num_col, const int num_row,
 
 /**
  * Compute the ranging information for all costs and bounds. For
- * nonbasic variables the ranging informaiton is relative to the
+ * nonbasic variables the ranging information is relative to the
  * active bound. For basic variables the ranging information relates
  * to...
  *
@@ -2019,9 +2191,28 @@ HighsInt Highs_getRanging(
  */
 void Highs_resetGlobalScheduler(const HighsInt blocking);
 
+/**
+ * Get a void* pointer to a callback data item
+ *
+ * @param data_out      A pointer to the HighsCallbackDataOut instance.
+ * @param item_name     The name of the item.
+ *
+ * @returns A void* pointer to the callback data item, or NULL if item_name not
+ * valid
+ */
+const void* Highs_getCallbackDataOutItem(const HighsCallbackDataOut* data_out,
+                                         const char* item_name);
+
 // *********************
 // * Deprecated methods*
 // *********************
+
+/**
+ * Return the HiGHS compilation date.
+ *
+ * @returns Thse HiGHS compilation date.
+ */
+const char* Highs_compilationDate(void);
 
 // These are deprecated because they don't follow the style guide. Constants
 // must begin with `k`.

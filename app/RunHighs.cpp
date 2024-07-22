@@ -2,7 +2,7 @@
 /*                                                                       */
 /*    This file is part of the HiGHS linear optimization suite           */
 /*                                                                       */
-/*    Written and engineered 2008-2023 by Julian Hall, Ivet Galabova,    */
+/*    Written and engineered 2008-2024 by Julian Hall, Ivet Galabova,    */
 /*    Leona Gottwald and Michael Feldmeier                               */
 /*                                                                       */
 /*    Available as open-source under the MIT License                     */
@@ -64,7 +64,7 @@ int main(int argc, char** argv) {
   }
   // Solve the model
   HighsStatus run_status = highs.run();
-  if (run_status == HighsStatus::kError) return (int)run_status;
+  if (run_status == HighsStatus::kError) return int(run_status);
 
   // highs.writeInfo("Info.md");
 

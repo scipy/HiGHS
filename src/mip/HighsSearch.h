@@ -2,7 +2,7 @@
 /*                                                                       */
 /*    This file is part of the HiGHS linear optimization suite           */
 /*                                                                       */
-/*    Written and engineered 2008-2023 by Julian Hall, Ivet Galabova,    */
+/*    Written and engineered 2008-2024 by Julian Hall, Ivet Galabova,    */
 /*    Leona Gottwald and Michael Feldmeier                               */
 /*                                                                       */
 /*    Available as open-source under the MIT License                     */
@@ -96,6 +96,7 @@ class HighsSearch {
              std::shared_ptr<const StabilizerOrbits> stabilizerOrbits = nullptr)
         : lower_bound(parentlb),
           estimate(parentestimate),
+          branching_point(0.0),
           lp_objective(-kHighsInf),
           other_child_lb(parentlb),
           nodeBasis(std::move(parentBasis)),
