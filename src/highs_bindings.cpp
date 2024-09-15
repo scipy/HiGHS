@@ -1,3 +1,4 @@
+#include "simplex/SimplexConst.h"
 #define PYBIND11_DETAILED_ERROR_MESSAGES 1
 #include <pybind11/functional.h>
 #include <pybind11/numpy.h>
@@ -1114,10 +1115,10 @@ PYBIND11_MODULE(_core, m) {
   m.attr("HIGHS_VERSION_PATCH") = HIGHS_VERSION_PATCH;
 
   // Submodules
-  py::module_ simplex_constants =
+  py::module_ simpc =
       m.def_submodule("simplex_constants", "Submodule for simplex constants");
 
-  py::enum_<SimplexStrategy>(simplex_constants, "SimplexStrategy", py::module_local())
+  py::enum_<SimplexStrategy>(simpc, "HighsSimplexStrategy")
       .value("kSimplexStrategyMin", SimplexStrategy::kSimplexStrategyMin)
       .value("kSimplexStrategyChoose", SimplexStrategy::kSimplexStrategyChoose)
       .value("kSimplexStrategyDual", SimplexStrategy::kSimplexStrategyDual)
@@ -1131,8 +1132,24 @@ PYBIND11_MODULE(_core, m) {
       .value("kSimplexStrategyMax", SimplexStrategy::kSimplexStrategyMax)
       .value("kSimplexStrategyNum", SimplexStrategy::kSimplexStrategyNum)
       .export_values();  // needed since it isn't an enum class
-  py::enum_<SimplexUnscaledSolutionStrategy>(simplex_constants,
-                                             "SimplexUnscaledSolutionStrategy", py::module_local())
+  py::enum_<SimplexCrashStrategy>(simpc, "HighsSimplexCrashStrategy")
+      .value("kMin", SimplexCrashStrategy::kSimplexCrashStrategyMin)
+      .value("kOff", SimplexCrashStrategy::kSimplexCrashStrategyOff)
+      .value("kLtssfK", SimplexCrashStrategy::kSimplexCrashStrategyLtssfK)
+      .value("kLtssf", SimplexCrashStrategy::kSimplexCrashStrategyLtssf)
+      .value("kBixby", SimplexCrashStrategy::kSimplexCrashStrategyBixby)
+      .value("kLtssfPri", SimplexCrashStrategy::kSimplexCrashStrategyLtssfPri)
+      .value("kLtsfK", SimplexCrashStrategy::kSimplexCrashStrategyLtsfK)
+      .value("kLtsfPri", SimplexCrashStrategy::kSimplexCrashStrategyLtsfPri)
+      .value("kLtsf", SimplexCrashStrategy::kSimplexCrashStrategyLtsf)
+      .value("kBixbyNoNonzeroColCosts",
+             SimplexCrashStrategy::kSimplexCrashStrategyBixbyNoNonzeroColCosts)
+      .value("kBasic", SimplexCrashStrategy::kSimplexCrashStrategyBasic)
+      .value("kTestSing", SimplexCrashStrategy::kSimplexCrashStrategyTestSing)
+      .value("kMax", SimplexCrashStrategy::kSimplexCrashStrategyMax)
+      .export_values();
+  py::enum_<SimplexUnscaledSolutionStrategy>(
+      simpc, "HighsSimplexUnscaledSolutionStrategy")
       .value(
           "kSimplexUnscaledSolutionStrategyMin",
           SimplexUnscaledSolutionStrategy::kSimplexUnscaledSolutionStrategyMin)
@@ -1152,7 +1169,7 @@ PYBIND11_MODULE(_core, m) {
           "kSimplexUnscaledSolutionStrategyNum",
           SimplexUnscaledSolutionStrategy::kSimplexUnscaledSolutionStrategyNum)
       .export_values();
-  py::enum_<SimplexSolvePhase>(simplex_constants, "SimplexSolvePhase", py::module_local())
+  py::enum_<SimplexSolvePhase>(simpc, "HighsSimplexSolvePhase")
       .value("kSolvePhaseMin", SimplexSolvePhase::kSolvePhaseMin)
       .value("kSolvePhaseError", SimplexSolvePhase::kSolvePhaseError)
       .value("kSolvePhaseExit", SimplexSolvePhase::kSolvePhaseExit)
@@ -1167,22 +1184,19 @@ PYBIND11_MODULE(_core, m) {
       .value("kSolvePhaseTabooBasis", SimplexSolvePhase::kSolvePhaseTabooBasis)
       .value("kSolvePhaseMax", SimplexSolvePhase::kSolvePhaseMax)
       .export_values();
-  py::enum_<SimplexEdgeWeightStrategy>(simplex_constants,
-                                       "SimplexEdgeWeightStrategy", py::module_local())
-      .value("kSimplexEdgeWeightStrategyMin",
-             SimplexEdgeWeightStrategy::kSimplexEdgeWeightStrategyMin)
-      .value("kSimplexEdgeWeightStrategyChoose",
+  py::enum_<SimplexEdgeWeightStrategy>(simpc, "HighsSimplexEdgeWeightStrategy")
+      .value("kMin", SimplexEdgeWeightStrategy::kSimplexEdgeWeightStrategyMin)
+      .value("kChoose",
              SimplexEdgeWeightStrategy::kSimplexEdgeWeightStrategyChoose)
-      .value("kSimplexEdgeWeightStrategyDantzig",
+      .value("kDantzig",
              SimplexEdgeWeightStrategy::kSimplexEdgeWeightStrategyDantzig)
-      .value("kSimplexEdgeWeightStrategyDevex",
+      .value("kDevex",
              SimplexEdgeWeightStrategy::kSimplexEdgeWeightStrategyDevex)
-      .value("kSimplexEdgeWeightStrategySteepestEdge",
+      .value("kSteepestEdge",
              SimplexEdgeWeightStrategy::kSimplexEdgeWeightStrategySteepestEdge)
-      .value("kSimplexEdgeWeightStrategyMax",
-             SimplexEdgeWeightStrategy::kSimplexEdgeWeightStrategyMax)
+      .value("kMax", SimplexEdgeWeightStrategy::kSimplexEdgeWeightStrategyMax)
       .export_values();
-  py::enum_<SimplexPriceStrategy>(simplex_constants, "SimplexPriceStrategy", py::module_local())
+  py::enum_<SimplexPriceStrategy>(simpc, "SimplexPriceStrategy")
       .value("kSimplexPriceStrategyMin",
              SimplexPriceStrategy::kSimplexPriceStrategyMin)
       .value("kSimplexPriceStrategyCol",
@@ -1197,7 +1211,7 @@ PYBIND11_MODULE(_core, m) {
              SimplexPriceStrategy::kSimplexPriceStrategyMax)
       .export_values();
   py::enum_<SimplexPivotalRowRefinementStrategy>(
-      simplex_constants, "SimplexPivotalRowRefinementStrategy", py::module_local())
+      simpc, "SimplexPivotalRowRefinementStrategy")
       .value("kSimplexInfeasibilityProofRefinementMin",
              SimplexPivotalRowRefinementStrategy::
                  kSimplexInfeasibilityProofRefinementMin)
@@ -1214,8 +1228,8 @@ PYBIND11_MODULE(_core, m) {
              SimplexPivotalRowRefinementStrategy::
                  kSimplexInfeasibilityProofRefinementMax)
       .export_values();
-  py::enum_<SimplexPrimalCorrectionStrategy>(simplex_constants,
-                                             "SimplexPrimalCorrectionStrategy", py::module_local())
+  py::enum_<SimplexPrimalCorrectionStrategy>(simpc,
+                                             "SimplexPrimalCorrectionStrategy")
       .value(
           "kSimplexPrimalCorrectionStrategyNone",
           SimplexPrimalCorrectionStrategy::kSimplexPrimalCorrectionStrategyNone)
@@ -1226,7 +1240,7 @@ PYBIND11_MODULE(_core, m) {
              SimplexPrimalCorrectionStrategy::
                  kSimplexPrimalCorrectionStrategyAlways)
       .export_values();
-  py::enum_<SimplexNlaOperation>(simplex_constants, "SimplexNlaOperation", py::module_local())
+  py::enum_<SimplexNlaOperation>(simpc, "SimplexNlaOperation")
       .value("kSimplexNlaNull", SimplexNlaOperation::kSimplexNlaNull)
       .value("kSimplexNlaBtranFull", SimplexNlaOperation::kSimplexNlaBtranFull)
       .value("kSimplexNlaPriceFull", SimplexNlaOperation::kSimplexNlaPriceFull)
@@ -1243,7 +1257,7 @@ PYBIND11_MODULE(_core, m) {
       .value("kNumSimplexNlaOperation",
              SimplexNlaOperation::kNumSimplexNlaOperation)
       .export_values();
-  py::enum_<EdgeWeightMode>(simplex_constants, "EdgeWeightMode", py::module_local())
+  py::enum_<EdgeWeightMode>(simpc, "EdgeWeightMode")
       .value("kDantzig", EdgeWeightMode::kDantzig)
       .value("kDevex", EdgeWeightMode::kDevex)
       .value("kSteepestEdge", EdgeWeightMode::kSteepestEdge)
