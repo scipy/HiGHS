@@ -353,6 +353,13 @@ if get_option('with_csharp')
 endif
 
 
+highspy_cpp = files([
+  'highs_bindings.cpp'
+])
+highsoptions_cpp = files([
+  'highs_options.cpp'
+])
+
 if get_option('with_pybind11')
   py = import('python').find_installation(pure: false)
 
@@ -380,13 +387,6 @@ highs_dep = declare_dependency(link_with: highslib,
     dependency('pybind11')
   ]
   _deps += pyb11_dep
-
-  highspy_cpp = files([
-    'highs_bindings.cpp'
-  ])
-  highsoptions_cpp = files([
-    'highs_options.cpp'
-  ])
 
   py.extension_module(
     '_core',
