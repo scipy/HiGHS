@@ -1,11 +1,9 @@
-# from __future__ import annotations
-
 from highspy._core import \
-    ObjSense, \
-    MatrixFormat, \
-    HessianFormat, \
-    SolutionStatus, \
-    BasisValidity, \
+    HighsObjSense, \
+    HighsMatrixFormat, \
+    HighsHessianFormat, \
+    HighsSolutionStatus, \
+    HighsBasisValidity, \
     HighsModelStatus, \
     HighsPresolveStatus, \
     HighsBasisStatus, \
@@ -14,8 +12,8 @@ from highspy._core import \
     HighsInfoType, \
     HighsStatus, \
     HighsLogType, \
-    IisStrategy, \
-    IisBoundStatus, \
+    HighsIisStrategy, \
+    HighsIisBoundStatus, \
     HighsSparseMatrix, \
     HighsLp, \
     HighsHessian, \
@@ -35,77 +33,17 @@ from highspy._core import \
     HIGHS_VERSION_MINOR, \
     HIGHS_VERSION_PATCH, \
     simplex_constants, \
-    cb, \
-    kSolutionStatusNone, \
-    kSolutionStatusInfeasible, \
-    kSolutionStatusFeasible, \
-    kBasisValidityInvalid, \
-    kBasisValidityValid
-
-#    kMaximize, \
-#    kColwise, \
-#    kRowwise, \
-#    kRowwisePartitioned, \
-#    kTriangular, \
-#    kSquare, \
-
-#    kNotset, \
-#    kLoadError, \
-#    kModelError, \
-#    kPresolveError, \
-#    kSolveError, \
-#    kPostsolveError, \
-#    kModelEmpty, \
-#    kOptimal, \
-#    kInfeasible, \
-#    kUnboundedOrInfeasible, \
-#    kUnbounded, \
-#    kObjectiveBound, \
-#    kObjectiveTarget, \
-#    kTimeLimit, \
-#    kUnknown, \
-#    kSolutionLimit, \
-#    kInterrupt, \
-#    kMemoryLimit, \
-#    kNotPresolved, \
-#    kNotReduced, \
-#    kInfeasible, \
-#    kUnboundedOrInfeasible, \
-#    kReduced, \
-#    kReducedToEmpty, \
-#    kTimeout, \
-#    kNullError, \
-#    kOptionsError, \
-#    kOutOfMemory, \
-#    kLower, \
-#    kBasic, \
-#    kUpper, \
-#    kZero, \
-#    kNonbasic, \
-#    kContinuous, \
-#    kInteger, \
-#    kSemiContinuous, \
-#    kSemiInteger, \
-#    kBool, \
-#    kInt, \
-#    kDouble, \
-#    , \
-#    , \
-#    , \
-#    , \
-#    , \
-#    , \
-#    , \
+    cb
 
 from .highs import Highs
 
 __all__ = ["__doc__",
            "__version__",
            "ObjSense",
-           "MatrixFormat",
-           "HessianFormat",
-           "SolutionStatus",
-           "BasisValidity",
+           "HighsMatrixFormat",
+           "HighsHessianFormat",
+           "HighsSolutionStatus",
+           "HighsBasisValidity",
            "HighsModelStatus",
            "HighsPresolveStatus",
            "HighsBasisStatus",
@@ -114,8 +52,8 @@ __all__ = ["__doc__",
            "HighsInfoType",
            "HighsStatus",
            "HighsLogType",
-           "IisStrategy",
-           "IisBoundStatus",
+           "HighsIisStrategy",
+           "HighsIisBoundStatus",
            "HighsSparseMatrix",
            "HighsLp",
            "HighsHessian",
@@ -137,63 +75,4 @@ __all__ = ["__doc__",
            "HIGHS_VERSION_PATCH",
            "simplex_constants",
            "cb",
-           #    "kMinimize",
-           #    "kMaximize",
-           #    "kColwise",
-           #    "kRowwise",
-           #    "kRowwisePartitioned",
-           #    "kTriangular",
-           #    "kSquare",
-           "kSolutionStatusNone",
-           "kSolutionStatusInfeasible",
-           "kSolutionStatusFeasible",
-           "kBasisValidityInvalid",
-           "kBasisValidityValid",
-           #    "kNotset",
-           #    "kLoadError",
-           #    "kModelError",
-           #    "kPresolveError",
-           #    "kSolveError",
-           #    "kPostsolveError",
-           #    "kModelEmpty",
-           #    "kOptimal",
-           #    "kInfeasible",
-           #    "kUnboundedOrInfeasible",
-           #    "kUnbounded",
-           #    "kObjectiveBound",
-           #    "kObjectiveTarget",
-           #    "kTimeLimit",
-           #    "kUnknown",
-           #    "kSolutionLimit",
-           #    "kInterrupt",
-           #    "kMemoryLimit",
-           #    "kNotPresolved",
-           #    "kNotReduced",
-           #    "kInfeasible",
-           #    "kUnboundedOrInfeasible",
-           #    "kReduced",
-           #    "kReducedToEmpty",
-           #    "kTimeout",
-           #    "kNullError",
-           #    "kOptionsError",
-           #    "kOutOfMemory",
-           #    "kLower",
-           #    "kBasic",
-           #    "kUpper",
-           #    "kZero",
-           #    "kNonbasic",
-           #    "kContinuous",
-           #    "kInteger",
-           #    "kSemiContinuous",
-           #    "kSemiInteger",
-           #    "kBool",
-           #    "kInt",
-           #    "kDouble",
-           #    "",
-           #    "",
-           #    "",
-           #    "",
-           #    "",
-           #    "",
-           #    "",
            ]

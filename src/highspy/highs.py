@@ -1,35 +1,13 @@
 from highspy._core import (
     # enum classes
-    ObjSense,
-    MatrixFormat,
-    HessianFormat,
-    SolutionStatus,
-    BasisValidity,
-    HighsModelStatus,
-    HighsPresolveStatus,
-    HighsBasisStatus,
+    HighsObjSense,
     HighsVarType,
-    HighsOptionType,
-    HighsInfoType,
     HighsStatus,
-    HighsLogType,
     # classes
-    HighsSparseMatrix,
-    HighsLp,
-    HighsHessian,
-    HighsModel,
-    HighsInfo,
     HighsOptions,
     _Highs,
-    # structs
-    HighsSolution,
-    HighsObjectiveSolution,
-    HighsBasis,
-    HighsRangingRecord,
-    HighsRanging,
     # constants
     kHighsInf,
-    kHighsIInf,
 )
 
 from collections.abc import Mapping
@@ -107,7 +85,7 @@ class Highs(_Highs):
             super().changeColsCost(len(vars), vars, vals)
             super().changeObjectiveOffset(obj.constant)
 
-        super().changeObjectiveSense(ObjSense.kMinimize)
+        super().changeObjectiveSense(HighsObjSense.kMinimize)
         return self.solve()
 
     # reset the objective and sense, then solve
@@ -139,7 +117,7 @@ class Highs(_Highs):
             super().changeColsCost(len(vars), vars, vals)
             super().changeObjectiveOffset(obj.constant)
 
-        super().changeObjectiveSense(ObjSense.kMaximize)
+        super().changeObjectiveSense(HighsObjSense.kMaximize)
         return self.solve()
 
     def internal_get_value(self, var_index_collection, col_value):
@@ -643,11 +621,11 @@ class Highs(_Highs):
 
     def setMinimize(self):
         """Sets the objective sense of the model to minimization."""
-        super().changeObjectiveSense(ObjSense.kMinimize)
+        super().changeObjectiveSense(HighsObjSense.kMinimize)
 
     def setMaximize(self):
         """Sets the objective sense of the model to maximization."""
-        super().changeObjectiveSense(ObjSense.kMaximize)
+        super().changeObjectiveSense(HighsObjSense.kMaximize)
 
     def setInteger(self, var):
         """Sets a variable's type to integer.
