@@ -286,10 +286,10 @@ _srcs = [
 
 highslib_srcs = [
   highs_conf_file,
-  _srcs,
-  _cupdlp_srcs,
-  _basiclu_srcs,
-  _ipx_srcs
+  files(_srcs),
+  files(_cupdlp_srcs),
+  files(_basiclu_srcs),
+  files(_ipx_srcs),
 ]
 
 
@@ -299,6 +299,8 @@ if get_option('default_library') == 'static'
   # private symbols don't get re-exported.
   symbol_visibility = 'inlineshidden'
 endif
+
+do_install = get_option('do_install')
 
 
 if not get_option('with_pybind11')
@@ -310,7 +312,7 @@ highslib = library('highs',
                    include_directories: _incdirs,
                    gnu_symbol_visibility: symbol_visibility,
                    pic: true,
-                   install: true)
+                   install: do_install)
                    
 highs_dep = declare_dependency(link_with: highslib,
                                dependencies: _deps,
@@ -333,7 +335,7 @@ if get_option('with_fortran')
                         link_with: highslib,
                         include_directories: _incdirs,
                         pic: true,
-                        install: true)
+                        install: do_install)
 endif
 
 # C#
@@ -349,7 +351,7 @@ if get_option('with_csharp')
                         link_with: highslib,
                         include_directories: _incdirs,
                         pic: true,
-                        install: true)
+                        install: do_install)
 endif
 
 
@@ -371,7 +373,7 @@ if get_option('with_pybind11')
                      include_directories: _incdirs,
                      gnu_symbol_visibility: symbol_visibility,
                      pic: true,
-                     install: true,
+                     install: do_install,
                      install_dir: py.get_install_dir() / 'highspy')
                    
 highs_dep = declare_dependency(link_with: highslib,
@@ -393,7 +395,7 @@ highs_dep = declare_dependency(link_with: highslib,
     sources : highspy_cpp + highs_conf_file,
     dependencies: _deps,
     cpp_args: _args,
-    install: true,
+    install: do_install,
     subdir: 'highspy',
     include_directories: _incdirs,
   )
@@ -403,7 +405,7 @@ highs_dep = declare_dependency(link_with: highslib,
     sources : highsoptions_cpp + highs_conf_file,
     dependencies: _deps,
     cpp_args: _args,
-    install: true,
+    install: do_install,
     subdir: 'highspy',
     include_directories: _incdirs,
   )
