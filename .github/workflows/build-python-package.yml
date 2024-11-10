@@ -14,7 +14,7 @@ jobs:
 
       - name: Build sdist
         run: |
-          python3 -m pip install build 
+          python3 -m pip install build
           python3 -m build --sdist
 
       - name: Install sdist
@@ -26,7 +26,7 @@ jobs:
         run: |
           python3 -m pip install pytest
           python3 -m pytest $GITHUB_WORKSPACE
-          
+
   build_sdist_mac:
     runs-on: macos-latest
     steps:
@@ -71,10 +71,10 @@ jobs:
       - name: Test highspy
         run: |
           python -m pip install pytest
-          python -m pytest 
-             
+          python -m pytest
+
   build_wheel_linux:
-    # ubuntu 22 has a latest version of cmake, but setup-python 
+    # ubuntu 22 has a latest version of cmake, but setup-python
     # does not seem to provide all necessary modules to find python
     # from cmake. works on my machine, test the wheels manually
     runs-on: ubuntu-latest
@@ -104,13 +104,13 @@ jobs:
         run: |
           python3 -m pip install pytest
           python3 -m pytest $GITHUB_WORKSPACE
-          
+
   # macos 13 is Intel
   build_wheel_macos_13:
     runs-on: macos-13
     strategy:
       matrix:
-        python: [3.11]    
+        python: [3.11]
     steps:
       - uses: actions/checkout@v4
 
@@ -135,13 +135,13 @@ jobs:
         run: |
           python3 -m pip install pytest
           python3 -m pytest $GITHUB_WORKSPACE
-            
+
   # macos 14 is M1
   build_wheel_macos_14:
-    runs-on: macos-14 
+    runs-on: macos-14
     strategy:
       matrix:
-        python: [3.11]    
+        python: [3.11]
     steps:
       - uses: actions/checkout@v4
 
@@ -192,8 +192,8 @@ jobs:
       - name: Test highspy
         run: |
           python -m pip install pytest
-          python -m pytest 
-          
+          python -m pytest
+
   build_wheel_windows:
     runs-on: windows-2019
     steps:
@@ -219,5 +219,4 @@ jobs:
       - name: Test highspy
         run: |
           python -m pip install pytest
-          python -m pytest 
-          
+          python -m pytest

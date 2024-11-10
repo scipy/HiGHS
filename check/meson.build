@@ -71,7 +71,6 @@ foreach test : test_array
       )
 endforeach
 
-
 test('test_capi',
      executable('capi_unit_tests',
                 sources: ['TestCAPI.c', highs_conf_file],

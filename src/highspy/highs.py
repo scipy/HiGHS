@@ -2119,7 +2119,7 @@ class highs_linear_expression(object):
 
         elif isinstance(other, highs_linear_expression):
             if self.constant is not None and other.bounds is not None or self.bounds is not None and other.constant is not None:
-                raise Exception("""Cannot add a bounded constraint to a constraint with a constant, i.e., (lb <= expr1 <= ub) + (expr2 + c). 
+                raise Exception("""Cannot add a bounded constraint to a constraint with a constant, i.e., (lb <= expr1 <= ub) + (expr2 + c).
                     Unsure of your intent. Did you want: lb + c <= expr1 + expr2 <= ub + c?  Try: (lb <= expr1 <= ub) + (expr2 == c) instead.""")
 
             self.idxs.extend(other.idxs)
@@ -2140,7 +2140,7 @@ class highs_linear_expression(object):
 
         else:
             if self.bounds is not None:
-                raise Exception("""Cannot add a constant to a bounded constraint, i.e., (lb <= expr <= ub) + c. 
+                raise Exception("""Cannot add a constant to a bounded constraint, i.e., (lb <= expr <= ub) + c.
                     Unsure of your intent. Did you want: lb + c <= expr <= ub + c?  Try: (lb <= expr <= ub) + (highs_linear_expression() == c) instead.""")
 
             self.constant = float(other) + (self.constant or 0.0)
@@ -2154,7 +2154,7 @@ class highs_linear_expression(object):
 
         elif isinstance(other, highs_linear_expression):
             if self.constant is not None and other.bounds is not None or self.bounds is not None and other.constant is not None:
-                raise Exception("""Cannot subtract a bounded constraint to a constraint with a constant, i.e., (lb <= expr1 <= ub) - (expr2 + c). 
+                raise Exception("""Cannot subtract a bounded constraint to a constraint with a constant, i.e., (lb <= expr1 <= ub) - (expr2 + c).
                     Unsure of your intent. Did you want: lb - c <= expr1 - expr2 <= ub - c?  Try: (lb <= expr1 <= ub) - (expr2 == c) instead.""")
 
             self.idxs.extend(other.idxs)
@@ -2175,7 +2175,7 @@ class highs_linear_expression(object):
 
         else:
             if self.bounds is not None:
-                raise Exception("""Cannot subtract a constant to a bounded constraint, i.e., (lb <= expr <= ub) - c. 
+                raise Exception("""Cannot subtract a constant to a bounded constraint, i.e., (lb <= expr <= ub) - c.
                     Unsure of your intent. Did you want: lb - c <= expr <= ub - c?  Try: (lb <= expr <= ub) - (highs_linear_expression() == c) instead.""")
 
             self.constant = (self.constant or 0.0) - float(other)

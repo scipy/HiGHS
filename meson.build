@@ -105,7 +105,7 @@ if cpu_family in ['ppc64', 'powerpc64'] and not meson.is_cross_build()
 endif
 
 if is_mingw
-  # For mingw-w64, don't use LTO 
+  # For mingw-w64, don't use LTO
   add_project_arguments('-fno-use-linker-plugin', language: ['c', 'cpp'])
 endif
 
