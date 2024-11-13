@@ -1,5 +1,5 @@
 project('highs', 'cpp', 'c',
-  version : '1.7.2',
+  version : '1.8.0',
   meson_version: '>= 1.1.0',
   default_options : ['warning_level=1',
                      'cpp_std=c++17',
@@ -20,15 +20,57 @@ host_system = host_machine.system()
 is_windows = host_system == 'windows'
 is_mingw = is_windows and cc.get_id() == 'gcc'
 
+# Granular flags
+# C++
+_cpp_Wno_invalid_offsetof = cppc.get_supported_arguments('-Wno-invalid-offsetof')
+_cpp_Wno_maybe_uninitialized = cppc.get_supported_arguments('-Wno-maybe-uninitialized')
+_cpp_Wno_reorder = cppc.get_supported_arguments('-Wno-reorder')
+_cpp_Wno_reorder_ctor = cppc.get_supported_arguments('-Wno-reorder-ctor')
+_cpp_Wno_sometimes_uninitialized = cppc.get_supported_arguments('-Wno-sometimes-uninitialized')
+_cpp_Wno_unused_but_set_variable = cppc.get_supported_arguments('-Wno-unused-but-set-variable')
+_cpp_Wno_unused_variable = cppc.get_supported_arguments('-Wno-unused-variable')
+_cpp_Wno_use_after_free = cppc.get_supported_arguments('-Wno-use-after-free')
+_cpp_Wno_comment = cppc.get_supported_arguments('-Wno-comment')
+
+
+# C
+Wno_comment = cc.get_supported_arguments('-Wno-comment')
+Wno_invalid_offsetof = cc.get_supported_arguments('-Wno-invalid-offsetof')
+Wno_maybe_uninitialized = cc.get_supported_arguments('-Wno-maybe-uninitialized')
+Wno_sometimes_uninitialized = cc.get_supported_arguments('-Wno-sometimes-uninitialized')
+Wno_unused_label = cc.get_supported_arguments('-Wno-unused-label')
+Wno_use_after_free = cc.get_supported_arguments('-Wno-use-after-free')
+Wno_unused_but_set_variable = cc.get_supported_arguments('-Wno-unused-but-set-variable')
+Wno_unused_variable = cc.get_supported_arguments('-Wno-unused-variable')
+Wno_use_after_free = cc.get_supported_arguments('-Wno-use-after-free')
+
 # Conditional arguments
-_args += cppc.get_supported_arguments([
-  '-Wno-unused-variable',
-  '-Wno-unused-but-set-variable',
-  '-Wno-unused-label',
-])
+_highs_cpp_suppressions = [
+  _cpp_Wno_comment,
+  _cpp_Wno_invalid_offsetof,
+  _cpp_Wno_maybe_uninitialized,
+  _cpp_Wno_reorder,
+  _cpp_Wno_reorder_ctor,
+  _cpp_Wno_sometimes_uninitialized,
+  _cpp_Wno_unused_but_set_variable,
+  _cpp_Wno_unused_variable,
+  _cpp_Wno_use_after_free,
+]
+
+_highs_c_suppressions = [
+  Wno_comment,
+  Wno_invalid_offsetof,
+  Wno_maybe_uninitialized,
+  Wno_sometimes_uninitialized,
+  Wno_unused_but_set_variable,
+  Wno_unused_label,
+  Wno_unused_variable,
+  Wno_use_after_free,
+]
+
 
 if cppc.get_id() == 'msvc'
-_args +=  cppc.get_supported_arguments([
+  add_project_arguments(
       '/wd4018',  # Disable warning: 'expression' : signed/unsigned mismatch
       '/wd4061',  # Disable warning: enumerator 'identifier' in switch of enum 'enumeration' is not explicitly handled by a case label
       '/wd4100',  # Disable warning: 'identifier' : unreferenced formal parameter
@@ -48,8 +90,9 @@ _args +=  cppc.get_supported_arguments([
       '/wd4514',  # Disable warning: 'function' : unreferenced inline function has been removed
       '/wd4701',  # Disable warning: potentially uninitialized local variable 'name' used
       '/wd4820',  # Disable warning: 'bytes' bytes padding added after construct 'member_name'
-      ])
-_args += '-D_CRT_SECURE_NO_WARNINGS'
+      language: 'cpp',
+  )
+  _args += '-D_CRT_SECURE_NO_WARNINGS'
 endif
 
 cpu_family = host_machine.cpu_family()
@@ -62,11 +105,14 @@ if cpu_family in ['ppc64', 'powerpc64'] and not meson.is_cross_build()
 endif
 
 if is_mingw
-  # For mingw-w64, don't use LTO 
-  add_project_arguments(cppc.get_supported_arguments('-fno-use-linker-plugin'), language: ['c', 'cpp'])
+  # For mingw-w64, don't use LTO
+  add_project_arguments('-fno-use-linker-plugin', language: ['c', 'cpp'])
 endif
 
 # --------------------- Dependencies
+threads_dep = dependency('threads', required: false)
+_deps += threads_dep
+
 # Determine whether it is necessary to link libatomic. This could be the case
 # e.g. on 32-bit platforms when atomic operations are used on 64-bit types.
 # The check is copied from SciPy which in turn came from
@@ -106,11 +152,6 @@ endif
 
 _deps += atomic_dep
 
-threads_dep = null_dep
-if not is_windows
- threads_dep = dependency('threads', required: false)
-endif
-_deps += threads_dep
 # Optional
 zlib_dep = dependency('zlib',
                       required: get_option('use_zlib'))

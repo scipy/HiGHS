@@ -253,6 +253,11 @@ HighsStatus HEkkPrimal::solve(const bool pass_force_phase2) {
       // LP identified as not having an optimal solution
       assert(ekk_instance_.model_status_ == HighsModelStatus::kInfeasible ||
              ekk_instance_.model_status_ == HighsModelStatus::kUnbounded);
+      // If infeasible, save the primal phase 1 dual values before
+      // they are overwritten with the duals for the original
+      // objective
+      if (ekk_instance_.model_status_ == HighsModelStatus::kInfeasible)
+        ekk_instance_.primal_phase1_dual_ = ekk_instance_.info_.workDual_;
       break;
     }
     if (solve_phase == kSolvePhaseOptimalCleanup) {
@@ -2671,7 +2676,7 @@ void HEkkPrimal::reportRebuild(const HighsInt reason_for_rebuild) {
   analysis->rebuild_reason = reason_for_rebuild;
   analysis->rebuild_reason_string =
       ekk_instance_.rebuildReason(reason_for_rebuild);
-  analysis->invertReport();
+  if (ekk_instance_.options_->output_flag) analysis->invertReport();
   analysis->simplexTimerStop(ReportRebuildClock);
 }
 
@@ -2807,6 +2812,15 @@ void HEkkPrimal::shiftBound(const bool lower, const HighsInt iVar,
     shift = infeasibility + feasibility;
     bound -= shift;
     new_infeasibility = bound - value;
+    if (new_infeasibility >= 0) {
+      printf(
+          "HEkkPrimal::shiftBound LB = %g; random_value = %g; value = %g; "
+          "feasibility = %g; infeasibility = %g; shift = %g; bound = %g; "
+          "new_infeasibility = %g; \n",
+          old_bound, random_value, value, feasibility, infeasibility, shift,
+          bound, new_infeasibility);
+      fflush(stdout);
+    }
     assert(new_infeasibility < 0);
   } else {
     // Bound to shift is upper

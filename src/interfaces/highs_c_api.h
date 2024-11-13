@@ -18,7 +18,7 @@
 // Highs_mipCall or Highs_qpCall, and these methods return the
 // appropriate solution information
 //
-// For sophisticated applications, where esoteric solutiuon
+// For sophisticated applications, where esoteric solution
 // information is needed, or if a sequence of modified models need to
 // be solved, use the Highs_create method to generate a pointer to an
 // instance of the C++ Highs class, and then use any of a large number
@@ -229,11 +229,14 @@ HighsInt Highs_mipCall(const HighsInt num_col, const HighsInt num_row,
  * @param q_format  The format of the Hessian matrix in the form of a
  *                  `kHighsHessianStatus` constant. If q_num_nz > 0, this must
  *                  be `kHighsHessianFormatTriangular`.
- * @param q_start   The Hessian matrix is provided in the same format as the
- *                  constraint matrix, using `q_start`, `q_index`, and `q_value`
- *                  in the place of `a_start`, `a_index`, and `a_value`.
+ * @param q_start   The Hessian matrix is provided to HiGHS as the lower
+ *                  triangular component in compressed sparse column form
+ *                  (or, equivalently, as the upper triangular component
+ *                  in compressed sparse row form). The sparse matrix consists
+ *                  of three arrays, `q_start`, `q_index`, and `q_value`.
+ *                  `q_start` is an array of length [num_col].
  * @param q_index   An array of length [q_num_nz] with indices of matrix
- *                  sentries.
+ *                  entries.
  * @param q_value   An array of length [q_num_nz] with values of matrix entries.
  *
  * @returns A `kHighsStatus` constant indicating whether the call succeeded.
@@ -498,10 +501,13 @@ HighsInt Highs_passMip(void* highs, const HighsInt num_col,
  * @param a_index     An array of length [num_nz] with indices of matrix
  *                    entries.
  * @param a_value     An array of length [num_nz] with values of matrix entries.
- * @param q_start     The Hessian matrix is provided in the same format as the
- *                    constraint matrix, using `q_start`, `q_index`, and
- *                    `q_value` in the place of `a_start`, `a_index`, and
- *                    `a_value`. If the model is linear, pass NULL.
+ * @param q_start     The Hessian matrix is provided to HiGHS as the lower
+ *                    triangular component in compressed sparse column form
+ *                    (or, equivalently, as the upper triangular component
+ *                    in compressed sparse row form). The sparse matrix consists
+ *                    of three arrays, `q_start`, `q_index`, and `q_value`.
+ *                    `q_start` is an array of length [num_col]. If the model
+ *                    is linear, pass NULL.
  * @param q_index     An array of length [q_num_nz] with indices of matrix
  *                    entries. If the model is linear, pass NULL.
  * @param q_value     An array of length [q_num_nz] with values of matrix
@@ -531,11 +537,16 @@ HighsInt Highs_passModel(void* highs, const HighsInt num_col,
  * @param num_nz    The number of non-zero elements in the Hessian matrix.
  * @param format    The format of the Hessian matrix as a `kHighsHessianFormat`
  *                  constant. This must be `kHighsHessianFormatTriangular`.
- * @param start     The Hessian matrix is provided to HiGHS as the upper
- *                  triangular component in compressed sparse column form. The
- *                  sparse matrix consists of three arrays, `start`, `index`,
- *                  and `value`. `start` is an array of length [num_col]
- *                  containing the starting index of each column in `index`.
+ * @param start     The Hessian matrix is provided to HiGHS as the lower
+ *                  triangular component in compressed sparse column form
+ *                  (or, equivalently, as the upper triangular component
+ *                  in compressed sparse row form), using `q_start`, `q_index`,
+ *                  and `q_value`.The Hessian matrix is provided to HiGHS as the
+ *                  lower triangular component in compressed sparse column form.
+ *                  The sparse matrix consists of three arrays, `start`,
+ *                  `index`, and `value`. `start` is an array of length
+ *                  [num_col] containing the starting index of each column in
+ *                  `index`.
  * @param index     An array of length [num_nz] with indices of matrix entries.
  * @param value     An array of length [num_nz] with values of matrix entries.
  *
@@ -569,6 +580,16 @@ HighsInt Highs_passRowName(const void* highs, const HighsInt row,
  */
 HighsInt Highs_passColName(const void* highs, const HighsInt col,
                            const char* name);
+
+/**
+ * Pass the name of the model.
+ *
+ * @param highs A pointer to the Highs instance.
+ * @param name  The name of the model.
+ *
+ * @returns A `kHighsStatus` constant indicating whether the call succeeded.
+ */
+HighsInt Highs_passModelName(const void* highs, const char* name);
 
 /**
  * Read the option values from file.
@@ -894,11 +915,13 @@ HighsInt Highs_getBasis(const void* highs, HighsInt* col_status,
 HighsInt Highs_getModelStatus(const void* highs);
 
 /**
- * Get an unbounded dual ray that is a certificate of primal infeasibility.
+ * Indicates whether a dual ray that is a certificate of primal
+ * infeasibility currently exists, and (at the expense of solving an
+ * LP) gets it if it does not and dual_ray_value is not nullptr.
  *
  * @param highs             A pointer to the Highs instance.
- * @param has_dual_ray      A pointer to an int to store 1 if the dual ray
- *                          exists.
+ * @param has_dual_ray      A pointer to an int to store 1 if a dual ray
+ *                          currently exists.
  * @param dual_ray_value    An array of length [num_row] filled with the
  *                          unbounded ray.
  *
@@ -908,7 +931,28 @@ HighsInt Highs_getDualRay(const void* highs, HighsInt* has_dual_ray,
                           double* dual_ray_value);
 
 /**
- * Get an unbounded primal ray that is a certificate of dual infeasibility.
+ * Indicates whether a dual unboundedness direction (corresponding to a
+ * certificate of primal infeasibility) exists, and (at the expense of
+ * solving an LP) gets it if it does not and
+ * dual_unboundedness_direction is not nullptr
+ *
+ * @param highs                                   A pointer to the Highs
+ *                                                instance.
+ * @param has_dual_unboundedness_direction        A pointer to an int to store 1
+ *                                                if the dual unboundedness
+ *                                                direction exists.
+ * @param dual_unboundedness_direction_value      An array of length [num_col]
+ *                                                filled with the unboundedness
+ *                                                direction.
+ */
+HighsInt getDualUnboundednessDirection(
+    const void* highs, HighsInt* has_dual_unboundedness_direction,
+    double* dual_unboundedness_direction_value);
+
+/**
+ * Indicates whether a primal ray that is a certificate of primal
+ * unboundedness currently exists, and (at the expense of solving an
+ * LP) gets it if it does not and primal_ray_value is not nullptr.
  *
  * @param highs             A pointer to the Highs instance.
  * @param has_primal_ray    A pointer to an int to store 1 if the primal ray
@@ -2163,6 +2207,38 @@ HighsInt Highs_getRanging(
     HighsInt* row_bound_up_in_var, HighsInt* row_bound_up_ou_var,
     double* row_bound_dn_value, double* row_bound_dn_objective,
     HighsInt* row_bound_dn_in_var, HighsInt* row_bound_dn_ou_var);
+
+/**
+ * Compute the solution corresponding to a (possibly weighted) sum of
+ * (allowable) infeasibilities in an LP/MIP.
+ *
+ * If local penalties are not defined, pass NULL, and the global
+ * penalty will be used. Negative penalty values imply that the bound
+ * or RHS value cannot be violated
+ *
+ * @param highs                             A pointer to the Highs instance.
+ * @param const double global_lower_penalty The penalty for violating lower
+ * bounds on variables
+ * @param const double global_upper_penalty The penalty for violating upper
+ * bounds on variables
+ * @param const double global_rhs_penalty   The penalty for violating constraint
+ * RHS values
+ * @param const double* local_lower_penalty The penalties for violating specific
+ * lower bounds on variables
+ * @param const double* local_upper_penalty The penalties for violating specific
+ * upper bounds on variables
+ * @param const double* local_rhs_penalty   The penalties for violating specific
+ * constraint RHS values
+ * @returns A `kHighsStatus` constant indicating whether the call succeeded.
+ */
+
+HighsInt Highs_feasibilityRelaxation(void* highs,
+                                     const double global_lower_penalty,
+                                     const double global_upper_penalty,
+                                     const double global_rhs_penalty,
+                                     const double* local_lower_penalty,
+                                     const double* local_upper_penalty,
+                                     const double* local_rhs_penalty);
 
 /**
  * Releases all resources held by the global scheduler instance.

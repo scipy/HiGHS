@@ -301,6 +301,10 @@ HighsInt Highs_passColName(const void* highs, const HighsInt col,
   return (HighsInt)((Highs*)highs)->passColName(col, std::string(name));
 }
 
+HighsInt Highs_passModelName(const void* highs, const char* name) {
+  return (HighsInt)((Highs*)highs)->passModelName(std::string(name));
+}
+
 HighsInt Highs_readOptions(const void* highs, const char* filename) {
   return (HighsInt)((Highs*)highs)->readOptions(filename);
 }
@@ -522,6 +526,17 @@ HighsInt Highs_getDualRay(const void* highs, HighsInt* has_dual_ray,
   bool v;
   HighsInt retcode = (HighsInt)((Highs*)highs)->getDualRay(v, dual_ray_value);
   *has_dual_ray = (HighsInt)v;
+  return retcode;
+}
+
+HighsInt Highs_getDualUnboundednessDirection(
+    const void* highs, HighsInt* has_dual_unboundedness_direction,
+    double* dual_unboundedness_direction_value) {
+  bool v;
+  HighsInt retcode = (HighsInt)((Highs*)highs)
+                         ->getDualUnboundednessDirection(
+                             v, dual_unboundedness_direction_value);
+  *has_dual_unboundedness_direction = (HighsInt)v;
   return retcode;
 }
 
@@ -1342,6 +1357,19 @@ HighsInt Highs_getRanging(
            num_row * sizeof(HighsInt));
 
   return status;
+}
+
+HighsInt Highs_feasibilityRelaxation(void* highs,
+                                     const double global_lower_penalty,
+                                     const double global_upper_penalty,
+                                     const double global_rhs_penalty,
+                                     const double* local_lower_penalty,
+                                     const double* local_upper_penalty,
+                                     const double* local_rhs_penalty) {
+  return (HighsInt)((Highs*)highs)
+      ->feasibilityRelaxation(global_lower_penalty, global_upper_penalty,
+                              global_rhs_penalty, local_lower_penalty,
+                              local_upper_penalty, local_rhs_penalty);
 }
 
 void Highs_resetGlobalScheduler(HighsInt blocking) {

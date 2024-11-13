@@ -13,8 +13,10 @@
 #include <numeric>
 
 #include "lp_data/HConst.h"
+#include "lp_data/HighsModelUtils.h"  // For debugging #2001
 #include "lp_data/HighsOptions.h"
 #include "util/HighsCDouble.h"
+#include "util/HighsUtils.h"
 
 namespace presolve {
 
@@ -728,8 +730,7 @@ void HighsPostsolveStack::DuplicateColumn::undo(const HighsOptions& options,
   } else if (duplicateColIntegral) {
     // Doesn't set basis.col_status[duplicateCol], so assume no basis
     assert(!basis.valid);
-    double roundVal = std::round(solution.col_value[duplicateCol]);
-    if (std::abs(roundVal - solution.col_value[duplicateCol]) >
+    if (fractionality(solution.col_value[duplicateCol]) >
         options.mip_feasibility_tolerance) {
       solution.col_value[duplicateCol] =
           std::floor(solution.col_value[duplicateCol]);
@@ -927,9 +928,7 @@ bool HighsPostsolveStack::DuplicateColumn::okMerge(
   if (x_int) {
     if (y_int) {
       // Scale must be integer and not exceed (x_u-x_l)+1 in magnitude
-      double int_scale = std::floor(scale + 0.5);
-      bool scale_is_int = std::fabs(int_scale - scale) <= tolerance;
-      if (!scale_is_int) {
+      if (fractionality(scale) > tolerance) {
         if (debug_report)
           printf(
               "%sDuplicateColumn::checkMerge: scale must be integer, but is "
@@ -1012,8 +1011,7 @@ void HighsPostsolveStack::DuplicateColumn::undoFix(
   //=============================================================================================
 
   auto isInteger = [&](const double v) {
-    double int_v = std::floor(v + 0.5);
-    return std::fabs(int_v - v) <= mip_feasibility_tolerance;
+    return (fractionality(v) <= mip_feasibility_tolerance);
   };
 
   auto isFeasible = [&](const double l, const double v, const double u) {
@@ -1352,6 +1350,74 @@ void HighsPostsolveStack::DuplicateColumn::undoFix(
 void HighsPostsolveStack::DuplicateColumn::transformToPresolvedSpace(
     std::vector<double>& primalSol) const {
   primalSol[col] = primalSol[col] + colScale * primalSol[duplicateCol];
+}
+
+void HighsPostsolveStack::SlackColSubstitution::undo(
+    const HighsOptions& options, const std::vector<Nonzero>& rowValues,
+    HighsSolution& solution, HighsBasis& basis) {
+  bool debug_print = false;
+  // May have to determine row dual and basis status unless doing
+  // primal-only transformation in MIP solver, in which case row may
+  // no longer exist if it corresponds to a removed cut, so have to
+  // avoid exceeding array bounds of solution.row_value
+  bool isModelRow = static_cast<size_t>(row) < solution.row_value.size();
+
+  // compute primal values
+  double colCoef = 0;
+  HighsCDouble rowValue = 0;
+  for (const auto& rowVal : rowValues) {
+    if (rowVal.index == col)
+      colCoef = rowVal.value;
+    else
+      rowValue += rowVal.value * solution.col_value[rowVal.index];
+  }
+
+  assert(colCoef != 0);
+  // Row values aren't fully postsolved, so why do this?
+  if (isModelRow)
+    solution.row_value[row] =
+        double(rowValue + colCoef * solution.col_value[col]);
+
+  solution.col_value[col] = double((rhs - rowValue) / colCoef);
+
+  // If no dual values requested, return here
+  if (!solution.dual_valid) return;
+
+  // Row retains its dual value, and column has this dual value scaled by coeff
+  if (isModelRow) solution.col_dual[col] = -solution.row_dual[row] / colCoef;
+
+  // Set basis status if necessary
+  if (!basis.valid) return;
+
+  // If row is basic, then slack is basic, otherwise row retains its status
+  if (isModelRow) {
+    HighsBasisStatus save_row_basis_status = basis.row_status[row];
+    if (basis.row_status[row] == HighsBasisStatus::kBasic) {
+      basis.col_status[col] = HighsBasisStatus::kBasic;
+      basis.row_status[row] =
+          computeRowStatus(solution.row_dual[row], RowType::kEq);
+    } else if (basis.row_status[row] == HighsBasisStatus::kLower) {
+      basis.col_status[col] =
+          colCoef > 0 ? HighsBasisStatus::kUpper : HighsBasisStatus::kLower;
+    } else {
+      basis.col_status[col] =
+          colCoef > 0 ? HighsBasisStatus::kLower : HighsBasisStatus::kUpper;
+    }
+    if (debug_print)
+      printf(
+          "HighsPostsolveStack::SlackColSubstitution::undo OgRowStatus = %s; "
+          "RowStatus = %s; ColStatus = %s\n",
+          utilBasisStatusToString(save_row_basis_status).c_str(),
+          utilBasisStatusToString(basis.row_status[row]).c_str(),
+          utilBasisStatusToString(basis.col_status[col]).c_str());
+    if (basis.col_status[col] == HighsBasisStatus::kLower) {
+      assert(solution.col_dual[col] > -options.dual_feasibility_tolerance);
+    } else if (basis.col_status[col] == HighsBasisStatus::kUpper) {
+      assert(solution.col_dual[col] < options.dual_feasibility_tolerance);
+    }
+  } else {
+    basis.col_status[col] = HighsBasisStatus::kNonbasic;
+  }
 }
 
 }  // namespace presolve

@@ -10,28 +10,45 @@ conf_data.set('HIGHS_VERSION_PATCH',
               meson.project_version().split('.')[2])
 conf_data.set('ZLIB_FOUND',
               zlib_dep.found())
-
-if is_windows
-# There is a bug with threading on windows, see CMakeList.txt:307
-# Also https://github.com/ERGO-Code/HiGHS/issues/1382#issuecomment-1670967735
-# Generally, no point using threading with HiGHs at this point (May 2024)
-  conf_data.set('HIGHS_NO_DEFAULT_THREADS',
-                true)
-else
-  conf_data.set('HIGHS_NO_DEFAULT_THREADS',
-                threads_dep.found())
-endif
-# This dependency hasn't been setup..
+# Is the use of the following two lines the cause of the meson build
+# failure?
 #conf_data.set('CUPDLP_CPU',
 #              cupdlp_cpu.found())
 # 64 bit numbers
-if host_machine.cpu_family() == 'x86_64' or host_machine.cpu_family() == 'amd64'
+if host_machine.cpu_family() == 'x86_64'
     # Get user's option, if it's not provided, enable highsint64 by default on x86_64
     highsint64_opt = get_option('highsint64')
     conf_data.set('HIGHSINT64', highsint64_opt)
 else
     conf_data.set('HIGHSINT64', false)
 endif
+# Date
+# today_str = 'unknown'
+# if (not meson.is_subproject())
+#     python_getdate = '''
+# import datetime
+# import os
+# import time
+
+# (ig)
+# Deprecate compilation date
+
+# build_date = datetime.datetime.utcfromtimestamp(
+#     int(os.environ.get('SOURCE_DATE_EPOCH', time.time()))
+# )
+# build_date_str = build_date.strftime('%Y-%m-%d')
+# print(build_date_str)
+#     '''
+#     # Note: this is not guaranteed to work on Windows. This should be removed
+#     #       (as proposed in gh-1735), and otherwise moved into a .py script with
+#     #       a `#!/usr/bin/env python3` shebang, and `python3 -c` dropped.
+#     today_cmd = run_command('python3', '-c',
+#                             python_getdate,
+#                             check: false)
+#     today_str = today_cmd.stdout().strip()
+# endif
+# conf_data.set_quoted('HIGHS_COMPILATION_DATE',
+#                      today_str)
 
 conf_data.set_quoted('HIGHS_COMPILATION_DATE',
                      'deprecated')
@@ -190,6 +207,7 @@ _srcs = [
     'lp_data/Highs.cpp',
     'lp_data/HighsCallback.cpp',
     'lp_data/HighsDebug.cpp',
+    'lp_data/HighsIis.cpp',
     'lp_data/HighsDeprecated.cpp',
     'lp_data/HighsInfo.cpp',
     'lp_data/HighsInfoDebug.cpp',
@@ -214,6 +232,7 @@ _srcs = [
     'mip/HighsImplications.cpp',
     'mip/HighsLpAggregator.cpp',
     'mip/HighsLpRelaxation.cpp',
+    'mip/HighsMipAnalysis.cpp',
     'mip/HighsMipSolver.cpp',
     'mip/HighsMipSolverData.cpp',
     'mip/HighsModkSeparator.cpp',
@@ -285,11 +304,10 @@ _srcs = [
 ]
 
 highslib_srcs = [
-  highs_conf_file,
-  _srcs,
-  _cupdlp_srcs,
-  _basiclu_srcs,
-  _ipx_srcs
+  files(_srcs),
+  files(_cupdlp_srcs),
+  files(_basiclu_srcs),
+  files(_ipx_srcs),
 ]
 
 
@@ -300,18 +318,19 @@ if get_option('default_library') == 'static'
   symbol_visibility = 'inlineshidden'
 endif
 
+do_install = get_option('do_install')
 
 if not get_option('with_pybind11')
 highslib = library('highs',
-                   highslib_srcs,
+                   highslib_srcs + highs_conf_file,
                    dependencies: _deps,
-                   cpp_args: _args,
-                   c_args: _args,
+                   cpp_args: _highs_cpp_suppressions + _args,
+                   c_args: _highs_c_suppressions + _args,
                    include_directories: _incdirs,
                    gnu_symbol_visibility: symbol_visibility,
                    pic: true,
-                   install: true)
-                   
+                   install: do_install)
+
 highs_dep = declare_dependency(link_with: highslib,
                                dependencies: _deps,
                                include_directories: _incdirs,
@@ -333,7 +352,7 @@ if get_option('with_fortran')
                         link_with: highslib,
                         include_directories: _incdirs,
                         pic: true,
-                        install: true)
+                        install: do_install)
 endif
 
 # C#
@@ -349,30 +368,32 @@ if get_option('with_csharp')
                         link_with: highslib,
                         include_directories: _incdirs,
                         pic: true,
-                        install: true)
+                        install: do_install)
 endif
 
+highspy_cpp = files([
+  'highs_bindings.cpp'
+])
 
 if get_option('with_pybind11')
   py = import('python').find_installation(pure: false)
 
   highslib = library('highs',
-                     highslib_srcs,
+                     highslib_srcs + highs_conf_file,
                      dependencies: _deps,
-                     cpp_args: _args,
-                     c_args: _args,
+                     cpp_args: _highs_cpp_suppressions + _args,
+                     c_args: _highs_c_suppressions + _args,
                      include_directories: _incdirs,
                      gnu_symbol_visibility: symbol_visibility,
                      pic: true,
-                     install: true,
+                     install: do_install,
                      install_dir: py.get_install_dir() / 'highspy')
-                   
-highs_dep = declare_dependency(link_with: highslib,
-                                   dependencies: _deps,
-                                   include_directories: _incdirs,
-                               )
-  _deps += highs_dep
 
+  highs_dep = declare_dependency(link_with: highslib,
+                                 dependencies: _deps,
+                                 include_directories: _incdirs,
+                                )
+  _deps += highs_dep
   pyb11_dep = [
     # py_dep is auto-added for Python >= 3.9, so it can be dropped here when
     # that is the minimum supported Python version
@@ -384,26 +405,13 @@ highs_dep = declare_dependency(link_with: highslib,
   highspy_cpp = files([
     'highs_bindings.cpp'
   ])
-  highsoptions_cpp = files([
-    'highs_options.cpp'
-  ])
 
   py.extension_module(
     '_core',
-    sources : highspy_cpp + highs_conf_file,
-    dependencies: _deps,
+    sources : highspy_cpp,
+    dependencies: [pyb11_dep, highs_dep],
     cpp_args: _args,
-    install: true,
-    subdir: 'highspy',
-    include_directories: _incdirs,
-  )
-
-  py.extension_module(
-    '_highs_options',
-    sources : highsoptions_cpp + highs_conf_file,
-    dependencies: _deps,
-    cpp_args: _args,
-    install: true,
+    install: do_install,
     subdir: 'highspy',
     include_directories: _incdirs,
   )
@@ -416,10 +424,4 @@ highs_dep = declare_dependency(link_with: highslib,
     pure: false,
     subdir: 'highspy'
   )
-
-if is_windows
-  rootdir = meson.project_source_root()
-  meson.add_install_script(f'@rootdir@' / 'scripts' / 'post_install_win.bat', '{dest_dir}', '{wheel}')
-endif
-
 endif

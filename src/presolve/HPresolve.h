@@ -43,7 +43,6 @@ class HPresolve {
   HighsTimer* timer;
   HighsMipSolver* mipsolver = nullptr;
   double primal_feastol;
-  HighsInt run_clock = -1;
 
   // triplet storage
   std::vector<double> Avalue;
@@ -178,6 +177,9 @@ class HPresolve {
 
   bool isImpliedInteger(HighsInt col);
 
+  bool convertImpliedInteger(HighsInt col, HighsInt row = -1,
+                             bool skipInputChecks = false);
+
   bool isLowerImplied(HighsInt col) const;
 
   bool isUpperImplied(HighsInt col) const;
@@ -223,9 +225,11 @@ class HPresolve {
 
   void markColDeleted(HighsInt col);
 
-  void fixColToLower(HighsPostsolveStack& postsolve_stack, HighsInt col);
+  bool fixColToLowerOrUnbounded(HighsPostsolveStack& postsolve_stack,
+                                HighsInt col);
 
-  void fixColToUpper(HighsPostsolveStack& postsolve_stack, HighsInt col);
+  bool fixColToUpperOrUnbounded(HighsPostsolveStack& postsolve_stack,
+                                HighsInt col);
 
   void fixColToZero(HighsPostsolveStack& postsolve_stack, HighsInt col);
 
@@ -263,6 +267,10 @@ class HPresolve {
   Result fastPresolveLoop(HighsPostsolveStack& postsolve_stack);
 
   Result presolve(HighsPostsolveStack& postsolve_stack);
+
+  Result removeSlacks(HighsPostsolveStack& postsolve_stack);
+
+  Result checkTimeLimit();
 
   Result checkLimits(HighsPostsolveStack& postsolve_stack);
 
@@ -338,7 +346,7 @@ class HPresolve {
 
   Result removeDoubletonEquations(HighsPostsolveStack& postsolve_stack);
 
-  HighsInt strengthenInequalities();
+  Result strengthenInequalities(HighsInt& num_strenghtened);
 
   HighsInt detectImpliedIntegers();
 
