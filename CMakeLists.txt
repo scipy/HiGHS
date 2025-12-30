@@ -40,24 +40,40 @@ option(FAST_BUILD "Fast build: " ON)
 
 find_program(GIT git)
 
-if((GIT) AND(EXISTS ${HIGHS_SOURCE_DIR}/.git))
+if((GIT) AND(EXISTS ${PROJECT_SOURCE_DIR}/.git))
     execute_process(
     COMMAND ${GIT} status
-    WORKING_DIRECTORY ${HIGHS_SOURCE_DIR} OUTPUT_QUIET)
+    WORKING_DIRECTORY ${PROJECT_SOURCE_DIR} OUTPUT_QUIET)
 
     execute_process(
     COMMAND ${GIT} describe --always
-    WORKING_DIRECTORY ${HIGHS_SOURCE_DIR}
+    WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
     OUTPUT_VARIABLE GITHASH OUTPUT_STRIP_TRAILING_WHITESPACE)
   # string(REGEX REPLACE "^.*-g" "" GITHASH ${GITHASH})
 else()
   set(GITHASH "n/a")
 endif()
 
+# message("CMAKE_CXX_COMPILER_ID is ${CMAKE_CXX_COMPILER_ID}")
+if (CMAKE_CXX_COMPILER_ID STREQUAL "IntelLLVM")
+  message(STATUS "Compiler is IntelLLVM")
+  if (CMAKE_HOST_WIN32 AND CMAKE_VERSION VERSION_LESS "3.23.0")
+      message(FATAL_ERROR "Need at least CMake 3.23 for IntelLLVM support of IntelDPCPP package on Windows")
+  elseif(CMAKE_VERSION VERSION_LESS "3.23.0")
+      message(FATAL_ERROR "CMake 3.20.5 is the minimum recommended for IntelLLVM on Linux")
+  endif()
+
+  find_package(IntelSYCL REQUIRED)
+endif()
+
+
 message(STATUS "Git hash: " ${GITHASH})
 # By default only build the C++ library.
 option(BUILD_CXX "Build C++ library" ON)
 message(STATUS "Build C++ library: ${BUILD_CXX}")
+
+option(BUILD_CXX_EXE "Build C++ executable" ON)
+message(STATUS "Build C++ executable: ${BUILD_CXX_EXE}")
 
 option(BUILD_TESTING "Build Tests" ON)
 
@@ -105,9 +121,9 @@ endif()
 
 option(HIGHS_COVERAGE "Activate the code coverage compilation" OFF)
 
-# Address | Thread | Leak 
+# Address | Thread | Leak
 # Linux atm
-# Only Debug is theted atm 
+# Only Debug atm
 # See below for RelWithDeb info, todo test wip
 set(DEBUG_MEMORY "Off" CACHE STRING "Sanitizers")
 
@@ -121,7 +137,7 @@ message(STATUS "Build pdlp with GPU: ${CUPDLP_GPU}")
 option(CUPDLP_FIND_CUDA "Build pdlp with GPU" OFF)
 message(STATUS "Use FindCUDAConf: ${CUPDLP_FIND_CUDA}")
 
-if(CUPDLP_GPU AND CMAKE_VERSION VERSION_LESS "3.25.0") 
+if(CUPDLP_GPU AND CMAKE_VERSION VERSION_LESS "3.25.0")
     message("CUPDLP FindCUDAConf requires CMake version minumum 3.24. Please use a higher version of CMake.")
 endif()
 
@@ -129,6 +145,21 @@ endif()
   # set (CUPDLP_GPU OFF)
   # message(STATUS "CUPLDP with Nvidia is only supported on Linux at the moment. Using CPU version.")
 # endif()
+
+option(HIPO "Build HIPO" OFF)
+message(STATUS "Build HIPO: ${HIPO}")
+if (HIPO AND CSHARP)
+  message(ERROR "HIPO is only available in C++. Not yet supported in C#.")
+endif()
+if (HIPO AND FORTRAN)
+  message(ERROR "HIPO is only available in C++. Not yet supported in FORTRAN")
+endif()
+if (HIPO AND PYTHON_BUILD_SETUP)
+  message(ERROR "HIPO is only available in C++. Not yet supported in Python.")
+endif()
+if (HIPO AND NOT FAST_BUILD)
+  message(ERROR "HIPO is only available with FAST_BUILD=ON.")
+endif()
 
 if (CUPDLP_GPU)
   if (WIN32)
@@ -142,11 +173,11 @@ if (CUPDLP_GPU)
     # With FindCUDAConf.cmake
     # Need to have the CUDA_HOME environment variable set.
     include(FindCUDAConf)
-  else() 
+  else()
     # Without FindCUDAConf.cmake
     enable_language(CUDA)
     find_package(CUDAToolkit REQUIRED)
-    
+
     set(CUDA_LIBRARY-NOTFOUND, OFF)
     set(CUDA_LIBRARY CUDA::cudart CUDA::cublas CUDA::cusparse)
   endif()
@@ -156,9 +187,13 @@ else()
     set(CUDA_LIBRARY-NOTFOUND true)
 endif()
 
-# option to force native termination, mostly for testing new GPU code
-# in comparison with the CPU
-option(CUPDLP_FORCE_NATIVE "Build pdlp with native termination" OFF)
+# HiPO deps
+if(HIPO)
+  # find_package(METIS REQUIRED)
+  # find_package(GKlib REQUIRED)
+  # does not work with outdated CMake
+  include(FindHipoDeps)
+endif()
 
 if (BUILD_CXX)
   # Default Build Type to be Release
@@ -194,11 +229,11 @@ if (BUILD_CXX)
     set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_LIBDIR})
     set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_BINDIR})
     # for multi-config build system (e.g. xcode)
-    foreach(OUTPUTCONFIG IN LISTS CMAKE_CONFIGURATION_TYPES)
-      string(TOUPPER ${OUTPUTCONFIG} OUTPUTCONFIG)
-      set(CMAKE_LIBRARY_OUTPUT_DIRECTORY_${OUTPUTCONFIG} ${CMAKE_BINARY_DIR}/${OUTPUTCONFIG}/${CMAKE_INSTALL_LIBDIR})
-      set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY_${OUTPUTCONFIG} ${CMAKE_BINARY_DIR}/${OUTPUTCONFIG}/${CMAKE_INSTALL_LIBDIR})
-      set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_${OUTPUTCONFIG} ${CMAKE_BINARY_DIR}/${OUTPUTCONFIG}/${CMAKE_INSTALL_BINDIR})
+    foreach(OutputConfig IN LISTS CMAKE_CONFIGURATION_TYPES)
+      string(TOUPPER ${OutputConfig} OUTPUTCONFIG)
+      set(CMAKE_LIBRARY_OUTPUT_DIRECTORY_${OUTPUTCONFIG} ${CMAKE_BINARY_DIR}/${OutputConfig}/${CMAKE_INSTALL_LIBDIR})
+      set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY_${OUTPUTCONFIG} ${CMAKE_BINARY_DIR}/${OutputConfig}/${CMAKE_INSTALL_LIBDIR})
+      set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_${OUTPUTCONFIG} ${CMAKE_BINARY_DIR}/${OutputConfig}/${CMAKE_INSTALL_BINDIR})
     endforeach()
   else()
     option(BUILD_SHARED_LIBS "Build shared libraries (.dll)." OFF)
@@ -206,14 +241,11 @@ if (BUILD_CXX)
     set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_BINDIR})
     set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_BINDIR})
     # for multi-config builds (e.g. msvc)
-    foreach(OUTPUTCONFIG IN LISTS CMAKE_CONFIGURATION_TYPES)
-      string(TOLOWER ${OUTPUTCONFIG} OUTPUTCONFIG)
-      set(CMAKE_LIBRARY_OUTPUT_DIRECTORY_${OUTPUTCONFIG} ${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_BINDIR}/${OUTPUTCONFIG})
-      set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY_${OUTPUTCONFIG} ${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_BINDIR}/${OUTPUTCONFIG})
-      set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_${OUTPUTCONFIG} ${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_BINDIR}/${OUTPUTCONFIG})
-      # set(CMAKE_LIBRARY_OUTPUT_DIRECTORY_${OUTPUTCONFIG} ${CMAKE_BINARY_DIR}/${OUTPUTCONFIG}/${CMAKE_INSTALL_BINDIR})
-      # set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY_${OUTPUTCONFIG} ${CMAKE_BINARY_DIR}/${OUTPUTCONFIG}/${CMAKE_INSTALL_BINDIR})
-      # set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_${OUTPUTCONFIG} ${CMAKE_BINARY_DIR}/${OUTPUTCONFIG}/${CMAKE_INSTALL_BINDIR})
+    foreach(OutputConfig IN LISTS CMAKE_CONFIGURATION_TYPES)
+      string(TOUPPER ${OutputConfig} OUTPUTCONFIG)
+      set(CMAKE_LIBRARY_OUTPUT_DIRECTORY_${OUTPUTCONFIG} ${CMAKE_BINARY_DIR}/${OutputConfig}/${CMAKE_INSTALL_BINDIR})
+      set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY_${OUTPUTCONFIG} ${CMAKE_BINARY_DIR}/${OutputConfig}/${CMAKE_INSTALL_BINDIR})
+      set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_${OUTPUTCONFIG} ${CMAKE_BINARY_DIR}/${OutputConfig}/${CMAKE_INSTALL_BINDIR})
     endforeach()
   endif()
 
@@ -235,14 +267,14 @@ if (BUILD_CXX)
     option(STDCALL "Build highs with the __stdcall convention" OFF)
   endif()
 
-  if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR 
-    CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR  
-    CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang") 
+  if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR
+    CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR
+    CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
-  # elseif (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC") 
+  # elseif (CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
   # not recognised by cl
-  #   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /std:c++11") 
-  endif()  
+  #   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /std:c++11")
+  endif()
 
   # Basic type
   include(CMakePushCheckState)
@@ -266,7 +298,7 @@ if (BUILD_CXX)
   check_type_size("int *" SIZEOF_INT_P LANGUAGE CXX)
   message(STATUS "Found int * size: ${SIZEOF_INT_P}")
   cmake_pop_check_state()
- 
+
   # Use current CMAKE_C_FLAGS and CMAKE_CXX_FLAGS when checking for IPO support,
   # instead of defaults: https://cmake.org/cmake/help/latest/policy/CMP0138.html
   if(MSVC AND BUILD_SHARED_LIBS)
@@ -284,7 +316,7 @@ if (BUILD_CXX)
     set(ipo_supported NO)
     message(STATUS "IPO / LTO not currently supported building HiGHS on MinGW")
   else()
-    if(CMAKE_VERSION VERSION_GREATER_EQUAL  "3.24.0") 
+    if(CMAKE_VERSION VERSION_GREATER_EQUAL  "3.24.0")
       cmake_policy(SET CMP0138 NEW)
     endif()
 
@@ -362,7 +394,7 @@ else()
     HIGHS_HAVE_BUILTIN_CLZ)
 endif()
 
-set(CMAKE_MACOSX_RPATH ON)
+set(CMAKE_MACOSX_RPATH TRUE)
 
 if (BUILD_DOTNET)
     set(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE)
@@ -387,12 +419,13 @@ if (NOT HIGHS_COVERAGE AND NOT APPLE)
   if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(ppc64|powerpc64)")
       check_cxx_compiler_flag("-mpopcntd" COMPILER_SUPPORTS_POPCNTD)
       if(COMPILER_SUPPORTS_POPCNTD)
-          set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mpopcntd")
+          # set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mpopcntd")
+          add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:-mpopcntd>")
       endif()
   else()
       check_cxx_compiler_flag("-mpopcnt" COMPILER_SUPPORTS_POPCNT)
       if(COMPILER_SUPPORTS_POPCNT)
-          add_compile_options(-mpopcnt)
+          add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:-mpopcnt>")
       endif()
   endif()
 endif()
@@ -418,7 +451,7 @@ endif()
 
 # For debug of cuda locally
 
-# does not work with older CMake 
+# does not work with older CMake
 # add_compile_options("$<$<AND:$<CONFIG:Debug,RelWithDebInfo>,$<COMPILE_LANGUAGE:CUDA>>:-G>")
 
 # add_compile_options("$<$<COMPILE_LANGUAGE:CUDA>:-G>")
@@ -443,16 +476,13 @@ if(MSVC)
   add_compile_options("$<$<COMPILE_LANGUAGE:C,CXX>:-D_CRT_SECURE_NO_WARNINGS>")
   add_compile_options("$<$<COMPILE_LANGUAGE:C,CXX>:/MP>")
 
-  # Try to split large pdb files into objects. 
+  # Try to split large pdb files into objects.
   # https://github.com/tensorflow/tensorflow/issues/31610
   # add_compile_options("/Z7")
   # add_link_options("/DEBUG:FASTLINK")
 
   add_compile_options("$<$<COMPILE_LANGUAGE:C,CXX>:/Z7>")
-
-  if (NOT CUPDLP_GPU)
-    add_compile_options("$<$<COMPILE_LANGUAGE:C,CXX>:/DEBUG:FASTLINK>")
-  endif()
+  add_link_options("$<$<COMPILE_LANGUAGE:C,CXX>:/DEBUG:FASTLINK>")
 
   if(STDCALL)
     # /Gz - stdcall calling convention
@@ -493,7 +523,10 @@ if(ZLIB AND NOT TARGET ZLIB::ZLIB)
   find_package(ZLIB 1.2.3)
 endif()
 
-include(CPack)
+if(CPack_CMake_INCLUDED EQUAL 0)
+  include(CPack)
+endif()
+
 set(CPACK_PACKAGE_VERSION_MAJOR "${HIGHS_VERSION_MAJOR}")
 set(CPACK_PACKAGE_VERSION_MINOR "${HIGHS_VERSION_MINOR}")
 set(CPACK_PACKAGE_VERSION_PATCH "${HIGHS_VERSION_PATCH}")
@@ -504,7 +537,13 @@ set(CPACK_PACKAGE_VENDOR "University of Edinburgh")
 # string(TIMESTAMP TODAY "%Y-%m-%d")
 # message(STATUS "Compilation date: " ${TODAY})
 
-configure_file(${HIGHS_SOURCE_DIR}/src/HConfig.h.in ${HIGHS_BINARY_DIR}/HConfig.h)
+configure_file(${PROJECT_SOURCE_DIR}/highs/HConfig.h.in ${HIGHS_BINARY_DIR}/HConfig.h)
+
+if (NOT DEBUG_MEMORY STREQUAL "Off")
+  if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+    add_compile_options($<$<AND:$<OR:$<CONFIG:Debug>,$<CONFIG:RelWithDebInfo>>,$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>>:-fno-sanitize=function,vptr>)
+  endif()
+endif()
 
 if (DEBUG_MEMORY STREQUAL "Address")
   set (CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} \
@@ -516,6 +555,11 @@ if (DEBUG_MEMORY STREQUAL "Address")
       -fno-omit-frame-pointer \
       -fsanitize-address-use-after-scope")
 
+  # add_compile_options("-fsanitize=address,undefined")
+  # add_compile_options("-fno-omit-frame-pointer")
+  # add_link_options("-fsanitize=address,undefined")
+  # add_link_options("-lubsan")
+
   set (CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} \
       -fsanitize=address,undefined \
       -fno-omit-frame-pointer \
@@ -526,34 +570,56 @@ if (DEBUG_MEMORY STREQUAL "Address")
       -fno-optimize-sibling-calls ")
 
 elseif (DEBUG_MEMORY STREQUAL "Thread")
-  set (CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} \
-      -fsanitize=thread,undefined \
+  set (CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -fsanitize=thread,undefined \
       -fno-omit-frame-pointer")
-  set (CMAKE_EXE_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_EXE_LINKER_FLAGS_RELWITHDEBINFO} \
-      -fsanitize=thread,undefined \
+  set (CMAKE_EXE_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_EXE_LINKER_FLAGS_RELWITHDEBINFO} -fsanitize=thread,undefined \
       -fno-omit-frame-pointer")
 
-  set (CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} \ 
-      -fsanitize=thread,undefined \
+  set (CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fsanitize=thread \
       -fno-omit-frame-pointer ")
-  set (CMAKE_EXE_LINKER_FLAGS_DEBUG "${CMAKE_EXE_LINKER_FLAGS_DEBUG} \
-      -fsanitize=thread,undefined \
+  set (CMAKE_EXE_LINKER_FLAGS_DEBUG "${CMAKE_EXE_LINKER_FLAGS_DEBUG} -fsanitize=thread \
       -fno-omit-frame-pointer ")
 
 elseif (DEBUG_MEMORY STREQUAL "Leak")
-  set (CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} \
-      -fsanitize=leak,undefined \
-      -fno-omit-frame-pointer")
-  set (CMAKE_EXE_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_EXE_LINKER_FLAGS_RELWITHDEBINFO} \
-      -fsanitize=leak,undefined \
-      -fno-omit-frame-pointer")
+  if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+    set (CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} \
+        -fsanitize=leak \
+        -fno-omit-frame-pointer")
+    set (CMAKE_EXE_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_EXE_LINKER_FLAGS_RELWITHDEBINFO} \
+        -fsanitize=leak \
+        -fno-omit-frame-pointer")
+    set (CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fsanitize=leak \
+        -fno-omit-frame-pointer ")
+    set (CMAKE_EXE_LINKER_FLAGS_DEBUG "${CMAKE_EXE_LINKER_FLAGS_DEBUG} -fsanitize=leak \
+        -fno-omit-frame-pointer ")
+  else()
+    set (CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} \
+        -fsanitize=leak,undefined \
+        -fno-omit-frame-pointer")
+    set (CMAKE_EXE_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_EXE_LINKER_FLAGS_RELWITHDEBINFO} \
+        -fsanitize=leak,undefined \
+        -fno-omit-frame-pointer")
+    set (CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fsanitize=leak,undefined \
+        -fno-omit-frame-pointer ")
+    set (CMAKE_EXE_LINKER_FLAGS_DEBUG "${CMAKE_EXE_LINKER_FLAGS_DEBUG} -fsanitize=leak,undefined \
+        -fno-omit-frame-pointer ")
+  endif()
+elseif (DEBUG_MEMORY STREQUAL "Memory")
+  if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+    set (CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} \
+        -fsanitize=memory \
+        -fno-omit-frame-pointer")
+    set (CMAKE_EXE_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_EXE_LINKER_FLAGS_RELWITHDEBINFO} \
+        -fsanitize=memory \
+        -fno-omit-frame-pointer")
+    set (CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fsanitize=memory \
+        -fno-omit-frame-pointer ")
+    set (CMAKE_EXE_LINKER_FLAGS_DEBUG "${CMAKE_EXE_LINKER_FLAGS_DEBUG} -fsanitize=memory \
+        -fno-omit-frame-pointer ")
 
-  set (CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} \ 
-      -fsanitize=leak,undefined \
-      -fno-omit-frame-pointer ")
-  set (CMAKE_EXE_LINKER_FLAGS_DEBUG "${CMAKE_EXE_LINKER_FLAGS_DEBUG} \
-      -fsanitize=leak,undefined \
-      -fno-omit-frame-pointer ")
+  else()
+    message(FATAL_ERROR "Memory sanitizer only available with clang.")
+  endif()
 endif()
 
 # HiGHS coverage update in progress
@@ -571,11 +637,11 @@ if(FAST_BUILD AND HIGHS_COVERAGE)
   message(STATUS "Building in coverage mode")
 
   # Enable coverage flags
-  add_compile_options(-O0) 
-  add_compile_options(--coverage) 
-  add_compile_options(-fprofile-update=atomic) 
+  add_compile_options(-O0)
+  add_compile_options(--coverage)
+  add_compile_options(-fprofile-update=atomic)
 
-  add_link_options(-O0) 
+  add_link_options(-O0)
   add_link_options(--coverage)    # Ensure coverage data is linked correctly
 
   find_program(GCOV_PATH gcov)
@@ -662,7 +728,7 @@ if(NOT FAST_BUILD)
         COMMAND ${LCOV_PATH} --directory ${CMAKE_BINARY_DIR} --zerocounters
         COMMAND ${LCOV_PATH} --capture --initial --directory ${CMAKE_BINARY_DIR}/bin --output-file ${CMAKE_BINARY_DIR}/coverage.info
         COMMAND ${CMAKE_COMMAND} -E chdir ${CMAKE_BINARY_DIR} ${CMAKE_CTEST_COMMAND} -LE "(LONG|FAIL)" || true
-        COMMAND ${LCOV_PATH} --capture --directory ${CMAKE_BINARY_DIR}/bin --directory ${CMAKE_BINARY_DIR}/src --directory ${CMAKE_BINARY_DIR}/app --directory ${CMAKE_BINARY_DIR}/check --output-file ${CMAKE_BINARY_DIR}/coverage.info
+        COMMAND ${LCOV_PATH} --capture --directory ${CMAKE_BINARY_DIR}/bin --directory ${CMAKE_BINARY_DIR}/highs --directory ${CMAKE_BINARY_DIR}/app --directory ${CMAKE_BINARY_DIR}/check --output-file ${CMAKE_BINARY_DIR}/coverage.info
         COMMAND ${LCOV_PATH} --remove "*/usr/include/*" --output-file ${CMAKE_BINARY_DIR}/coverage.info.cleaned
         COMMAND ${GENHTML_PATH} -o ${CMAKE_BINARY_DIR}/coverage ${CMAKE_BINARY_DIR}/coverage.info.cleaned
         COMMAND ${CMAKE_COMMAND} -E remove ${CMAKE_BINARY_DIR}/coverage.info.cleaned
@@ -676,7 +742,7 @@ if(NOT FAST_BUILD)
         COMMAND ${LCOV_PATH} --directory ${CMAKE_BINARY_DIR} --zerocounters
         COMMAND ${LCOV_PATH} --capture --initial --directory ${CMAKE_BINARY_DIR}/bin --output-file ${CMAKE_BINARY_DIR}/coverage.info
         COMMAND ${CMAKE_COMMAND} -E chdir ${CMAKE_BINARY_DIR} ${CMAKE_CTEST_COMMAND} -LE "(LONG|FAIL)" || true
-        COMMAND ${LCOV_PATH} --capture --directory ${CMAKE_BINARY_DIR}/bin --directory ${CMAKE_BINARY_DIR}/src --directory ${CMAKE_BINARY_DIR}/app --directory ${CMAKE_BINARY_DIR}/check --output-file ${CMAKE_BINARY_DIR}/coverage.info
+        COMMAND ${LCOV_PATH} --capture --directory ${CMAKE_BINARY_DIR}/bin --directory ${CMAKE_BINARY_DIR}/highs --directory ${CMAKE_BINARY_DIR}/app --directory ${CMAKE_BINARY_DIR}/check --output-file ${CMAKE_BINARY_DIR}/coverage.info
         VERBATIM
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
         COMMENT "Resetting code coverage counters to zero.")
@@ -685,22 +751,22 @@ if(NOT FAST_BUILD)
 
   include_directories(
     ${HIGHS_BINARY_DIR}
-    ${HIGHS_SOURCE_DIR}/app
-    ${HIGHS_SOURCE_DIR}/extern
-    ${HIGHS_SOURCE_DIR}/extern/zstr
-    ${HIGHS_SOURCE_DIR}/src
-    ${HIGHS_SOURCE_DIR}/src/io
-    ${HIGHS_SOURCE_DIR}/src/pdlp/cupdlp
-    ${HIGHS_SOURCE_DIR}/src/ipm/ipx
-    ${HIGHS_SOURCE_DIR}/src/ipm/basiclu
-    ${HIGHS_SOURCE_DIR}/src/lp_data
-    ${HIGHS_SOURCE_DIR}/src/mip
-    ${HIGHS_SOURCE_DIR}/src/model
-    ${HIGHS_SOURCE_DIR}/src/presolve
-    ${HIGHS_SOURCE_DIR}/src/qpsolver
-    ${HIGHS_SOURCE_DIR}/src/simplex
-    ${HIGHS_SOURCE_DIR}/src/test
-    ${HIGHS_SOURCE_DIR}/src/util)
+    ${PROJECT_SOURCE_DIR}/app
+    ${PROJECT_SOURCE_DIR}/extern
+    ${PROJECT_SOURCE_DIR}/extern/zstr
+    ${PROJECT_SOURCE_DIR}/highs
+    ${PROJECT_SOURCE_DIR}/highs/io
+    ${PROJECT_SOURCE_DIR}/highs/pdlp/cupdlp
+    ${PROJECT_SOURCE_DIR}/highs/ipm/ipx
+    ${PROJECT_SOURCE_DIR}/highs/ipm/basiclu
+    ${PROJECT_SOURCE_DIR}/highs/lp_data
+    ${PROJECT_SOURCE_DIR}/highs/mip
+    ${PROJECT_SOURCE_DIR}/highs/model
+    ${PROJECT_SOURCE_DIR}/highs/presolve
+    ${PROJECT_SOURCE_DIR}/highs/qpsolver
+    ${PROJECT_SOURCE_DIR}/highs/simplex
+    ${PROJECT_SOURCE_DIR}/highs/test_kkt
+    ${PROJECT_SOURCE_DIR}/highs/util)
 
   # explicitly switch on colored output for ninja
   if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
@@ -714,7 +780,7 @@ if(NOT FAST_BUILD)
   # endif()
 
   # Targets
-  add_subdirectory(src)
+  add_subdirectory(highs)
   add_subdirectory(app)
   if(BUILD_TESTING)
     enable_testing()
