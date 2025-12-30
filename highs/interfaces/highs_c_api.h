@@ -2533,13 +2533,6 @@ HighsInt Highs_repairCallbackSolution(HighsCallbackDataIn* data_in);
 // * Deprecated methods*
 // *********************
 
-/**
- * Return the HiGHS compilation date.
- *
- * @returns Thse HiGHS compilation date.
- */
-static const char* Highs_compilationDate(void);
-
 // These are deprecated because they don't follow the style guide. Constants
 // must begin with `k`.
 static const HighsInt HighsStatuskError = -1;
