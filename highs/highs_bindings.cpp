@@ -44,8 +44,7 @@ dense_array_t<T> to_ndarray(std::vector<T>&& vec) {
 // Call sites must register with nb::rv_policy::reference_internal so that
 // the returned array's owner (self) is kept alive for as long as the array is.
 template <typename Base, typename T>
-std::function<nb::ndarray<const T, nb::numpy, nb::device::cpu, nb::c_contig>(const Base&)>
-make_readonly_ptr(std::vector<T> Base::* member) {
+auto make_readonly_ptr(std::vector<T> Base::* member) {
   return [member](const Base& self) {
     const std::vector<T>& vec = self.*member;
     return nb::ndarray<const T, nb::numpy, nb::device::cpu, nb::c_contig>(vec.data(),
@@ -55,9 +54,8 @@ make_readonly_ptr(std::vector<T> Base::* member) {
 
 // 'setter' wrapper around numpy array to std::vector<T> (copies the data from python)
 template <typename Base, typename T>
-std::function<void(Base&, dense_array_t<T>)> make_setter_ptr(
-    std::vector<T> Base::* member) {
-  return [member](Base& self, dense_array_t<T> array) -> void {
+auto make_setter_ptr(std::vector<T> Base::* member) {
+  return [member](Base& self, dense_array_t<T> array) {
     if (array.ndim() != 1) {
       throw std::runtime_error("Expected a 1D array");
     }
