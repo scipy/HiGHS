@@ -18,31 +18,17 @@ set(headers_python ${highs_headers_python}
 
 # Find Python 3
 find_package(Python COMPONENTS Interpreter Development.Module REQUIRED)
-find_package(pybind11 CONFIG)
 
-python_add_library(_core MODULE highs/highs_bindings.cpp WITH_SOABI)
-
-# Pybind11
-# include(FetchContent)
-# message(CHECK_START "Fetching pybind11")
-# list(APPEND CMAKE_MESSAGE_INDENT "  ")
-# set(PYBIND11_INSTALL ON)
-# set(PYBIND11_TEST OFF)
-# FetchContent_Declare(
-#   pybind11
-#   GIT_REPOSITORY "https://github.com/pybind/pybind11.git"
-#   GIT_TAG "v2.11.1"
-# )
-# FetchContent_MakeAvailable(pybind11)
-# list(POP_BACK CMAKE_MESSAGE_INDENT)
-# message(CHECK_PASS "fetched")
+# Locate nanobind's CMake config via the installed Python package
+execute_process(
+  COMMAND "${Python_EXECUTABLE}" -m nanobind --cmake_dir
+  OUTPUT_STRIP_TRAILING_WHITESPACE OUTPUT_VARIABLE nanobind_ROOT)
+find_package(nanobind CONFIG REQUIRED)
 
 # add module
-# pybind11_add_module(highspy highspy/highs_bindings.cpp)
+nanobind_add_module(_core highs/highs_bindings.cpp)
 
-target_link_libraries(_core PRIVATE pybind11::headers)
-
-# sources for python 
+# sources for python
 target_sources(_core PUBLIC ${sources_python} ${headers_python})
 
 # include directories for python 
