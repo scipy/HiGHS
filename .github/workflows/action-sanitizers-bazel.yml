@@ -14,7 +14,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: bazelbuild/setup-bazelisk@v3
+      - uses: bazel-contrib/setup-bazel@0.19.1
 
       - name: Bazel clean
         run: bazel clean
@@ -40,7 +40,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: bazelbuild/setup-bazelisk@v3
+      - uses: bazel-contrib/setup-bazel@0.19.1
 
       - name: Bazel clean
         run: bazel clean
@@ -57,11 +57,12 @@ jobs:
       - name: All Tests
         run: bazel test -c dbg --config=tsan --runs_per_test 5 //...
 
-      # - name: Upload bazel-testlogs
-      #   uses: actions/upload-artifact@v7
-      #   with:
-      #     name: bazel-testlogs-tsan
-      #     path: bazel-testlogs/
+      - name: Upload bazel-testlogs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: bazel-testlogs-tsan
+          path: bazel-testlogs/
 
   lsan:
     runs-on: ${{ matrix.os }}
@@ -72,7 +73,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: bazelbuild/setup-bazelisk@v3
+      - uses: bazel-contrib/setup-bazel@0.19.1
 
       - name: Bazel clean
         run: bazel clean
@@ -98,7 +99,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: bazelbuild/setup-bazelisk@v3
+      - uses: bazel-contrib/setup-bazel@0.19.1
 
       - name: bazel clean
         run: bazel clean
