@@ -14,7 +14,7 @@
 #include <vector>
 
 #include "util/HighsCDouble.h"
-#include "util/HighsInt.h"
+#include "util/HighsType.h"
 
 class HighsSparseVectorSum {
  public:
@@ -39,7 +39,7 @@ class HighsSparseVectorSum {
     }
 
     if (values[index] == 0.0)
-      values[index] = std::numeric_limits<double>::min();
+      values[index] = (std::numeric_limits<double>::min)();
   }
 
   void add(HighsInt index, HighsCDouble value) {
@@ -51,12 +51,15 @@ class HighsSparseVectorSum {
     }
 
     if (values[index] == 0.0)
-      values[index] = std::numeric_limits<double>::min();
+      values[index] = (std::numeric_limits<double>::min)();
   }
 
   const std::vector<HighsInt>& getNonzeros() const { return nonzeroinds; }
 
-  double getValue(HighsInt index) const { return double(values[index]); }
+  template <typename T = double>
+  T getValue(HighsInt index) const {
+    return static_cast<T>(values[index]);
+  }
 
   void clear() {
     if (10 * nonzeroinds.size() < 3 * values.size())

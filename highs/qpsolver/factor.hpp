@@ -34,6 +34,11 @@ class CholeskyFactor {
   std::vector<double> a;
 
   void resize(HighsInt new_k_max) {
+    // If new_k_max is ever zero, then current_k_max = 0, so when
+    // 2*current_k_max is passed into resize from expand, new_k_max is
+    // still zero. Observed in #3453, but could not reproduce. No harm
+    // in ensuring that the value used for new_k_max is at least 1.
+    new_k_max = std::max(new_k_max, HighsInt(1));
     std::vector<double> L_old = L;
     L.clear();
     L.resize((new_k_max) * (new_k_max));
@@ -59,7 +64,10 @@ class CholeskyFactor {
     L.resize(current_k_max * current_k_max);
   }
 
-  void recompute() {
+  // the factor no longer matches the null space: recompute it when next used
+  void invalidate() { uptodate = false; }
+
+  QpSolverStatus recompute() {
     std::vector<std::vector<double>> orig;
     HighsInt dim_ns = basis.getinactive().size();
     numberofreduces = 0;
@@ -90,7 +98,11 @@ class CholeskyFactor {
         if (row == col) {
           for (size_t k = 0; k < row; k++)
             sum += L[k * current_k_max + row] * L[k * current_k_max + row];
-          L[row * current_k_max + row] = sqrt(orig[row][row] - sum);
+          double d_value = orig[row][row] - sum;
+          if (d_value <= 0) {
+            return QpSolverStatus::NOTPOSITIVDEFINITE;
+          }
+          L[row * current_k_max + row] = sqrt(d_value);
         } else {
           for (size_t k = 0; k < row; k++)
             sum += (L[k * current_k_max + col] * L[k * current_k_max + row]);
@@ -101,16 +113,25 @@ class CholeskyFactor {
     }
     current_k = dim_ns;
     uptodate = true;
+
+    return QpSolverStatus::OK;
   }
 
+  // Appends the null space column yp to the factor. The new diagonal entry
+  // is the Schur complement mu - l'l, with mu = yp'Q yp and l = L^{-1}Z'Q yp.
+  // When yp is nearly Q-dependent on the current null space, mu and l'l agree
+  // to all digits and their difference is rounding error, possibly negative.
+  // For a nonempty null space, the caller passes curvature = p'Qp, with p the
+  // Q-conjugate search direction yp - Z(Z'QZ)^{-1}Z'Q yp: this is the same
+  // Schur complement, evaluated as a quadratic form without cancellation.
   QpSolverStatus expand(const QpVector& yp, QpVector& gyp, QpVector& l,
-                        QpVector& m) {
+                        QpVector& m, const double curvature) {
     if (!uptodate) {
       return QpSolverStatus::OK;
     }
     double mu = gyp * yp;
     l.resparsify();
-    double lambda = mu - l.norm2();
+    double lambda = l.dim > 0 ? curvature : mu;
     if (lambda > 0.0) {
       if (current_k_max <= current_k + 1) {
         resize(current_k_max * 2);
@@ -180,14 +201,16 @@ class CholeskyFactor {
     return QpSolverStatus::OK;
   }
 
-  void solveL(QpVector& rhs) {
+  QpSolverStatus solveL(QpVector& rhs) {
     if (!uptodate) {
-      recompute();
+      // Recompute Cholesky
+      QpSolverStatus status = recompute();
+      if (status != QpSolverStatus::OK) return status;
     }
 
     if (current_k != rhs.dim) {
-      printf("dimension mismatch\n");
-      return;
+      assert(current_k == rhs.dim);
+      return QpSolverStatus::kError;
     }
 
     for (HighsInt r = 0; r < rhs.dim; r++) {
@@ -197,6 +220,7 @@ class CholeskyFactor {
 
       rhs.value[r] /= L[r * current_k_max + r];
     }
+    return QpSolverStatus::OK;
   }
 
   // solve L' u = v
@@ -210,15 +234,20 @@ class CholeskyFactor {
     }
   }
 
-  void solve(QpVector& rhs) {
+  QpSolverStatus solve(QpVector& rhs) {
+    QpSolverStatus status = QpSolverStatus::OK;
     if (!uptodate || (numberofreduces >= runtime.instance.num_var / 2 &&
                       !has_negative_eigenvalue)) {
-      recompute();
+      // Recompute Cholesky
+      status = recompute();
+      if (status != QpSolverStatus::OK) return status;
     }
-    solveL(rhs);
+    status = solveL(rhs);
+    if (status != QpSolverStatus::OK) return status;
     solveLT(rhs);
 
     rhs.resparsify();
+    return QpSolverStatus::OK;
   }
 
   void eliminate(std::vector<double>& m, HighsInt i, HighsInt j, HighsInt kmax,
@@ -378,7 +407,7 @@ class CholeskyFactor {
     current_k--;
   }
 
-  void report(std::string name = "") {
+  void report(const std::string& name = "") {
     printf("%s\n", name.c_str());
     for (HighsInt i = 0; i < current_k; i++) {
       for (HighsInt j = 0; j < current_k; j++) {

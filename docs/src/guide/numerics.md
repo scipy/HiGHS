@@ -2,7 +2,7 @@
 
 Optimization solvers cannot be expected to find the exact solution of
 a problem, since it may not be possible to represent that solution
-using floating-point arithemtic. However, solvers will typically run
+using floating-point arithmetic. However, solvers will typically run
 faster and find more accurate solutions if the problem has good
 numerical properties. Ideally the optimal value of all primal
 variables (and dual variables when relevant) will be of order
@@ -40,8 +40,8 @@ HiGHS offers a facility to enable users to assess the consequences of
 better problem scaling, in cases where some objective coefficients or
 bounds are large, or if all objective coefficients or bounds are
 small. By setting the options [__user\_objective\_scale__](@ref
-option-user_objective_scale) and/or [__user\_bound\_scale__](@ref
-option-user_bound_scale), HiGHS will solve the given model with
+option-user-objective-scale) and/or [__user\_bound\_scale__](@ref
+option-user-bound-scale), HiGHS will solve the given model with
 uniform scaling of the objective coefficients or bounds. Note that
 these options define the exponent in power-of-two scaling factors so
 that model accuracy is not compromised. After solving the problem,

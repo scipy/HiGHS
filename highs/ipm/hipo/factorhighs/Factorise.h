@@ -3,21 +3,23 @@
 
 #include <cmath>
 
+#include "CliqueStack.h"
+#include "FactorHighsOptions.h"
 #include "Numeric.h"
 #include "Symbolic.h"
 #include "ipm/hipo/auxiliary/IntConfig.h"
-#include "ipm/hipo/auxiliary/Log.h"
+#include "ipm/hipo/auxiliary/Logger.h"
 
 namespace hipo {
 
 class Factorise {
  public:
   // matrix to factorise
-  std::vector<Int> rowsA_{};
-  std::vector<Int> ptrA_{};
-  std::vector<double> valA_{};
+  std::vector<Int> rowsM_{};
+  std::vector<Int> ptrM_{};
+  std::vector<double> valM_{};
   Int n_{};
-  Int nzA_{};
+  Int nzM_{};
 
   // symbolic factorisation
   const Symbolic& S_;
@@ -50,31 +52,30 @@ class Factorise {
   // largest diagonal element in the original matrix and norms of columns
   double max_diag_{};
   double min_diag_{};
-  double A_norm1_{};
-  std::vector<double> one_norm_cols_{};
-  std::vector<double> inf_norm_cols_{};
+  double M_norm1_{};
 
   // regularisation
   std::vector<double> total_reg_{};
 
-  // values for static regularisation
-  const Regul& regul_;
-
   // flag to stop computation
-  bool flag_stop_ = false;
+  std::atomic<bool> flag_stop_{false};
 
-  const Log* log_;
+  const Logger* logger_;
   DataCollector& data_;
+  const FHoptions& FH_opt_;
 
- public:
+  CliqueStack* stack_;
+
   void permute(const std::vector<Int>& iperm);
+  void processTreeSerial();
+  void processTreeParallel();
   void processSupernode(Int sn);
 
  public:
-  Factorise(const Symbolic& S, const std::vector<Int>& rowsA,
-            const std::vector<Int>& ptrA, const std::vector<double>& valA,
-            const Regul& regul, const Log* log, DataCollector& data,
-            std::vector<std::vector<double>>& sn_columns);
+  Factorise(const Symbolic& S, Int n, Int nz, const Int* rowsM, const Int* ptrM,
+            const double* valM, const FHoptions& FH_opt, const Logger* logger,
+            DataCollector& data, std::vector<std::vector<double>>& sn_columns,
+            CliqueStack* stack);
 
   bool run(Numeric& num);
 };

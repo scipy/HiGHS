@@ -16,7 +16,7 @@ endif()
 
 if ((NOT FAST_BUILD OR ALL_TESTS) AND NOT (BUILD_EXTRA_UNIT_ONLY))
   # prepare Catch library
-  set(CATCH_INCLUDE_DIR ${PROJECT_SOURCE_DIR}/extern)
+  set(CATCH_INCLUDE_DIR ${PROJECT_SOURCE_DIR}/extern/catch)
   add_library(Catch INTERFACE)
   target_include_directories(Catch INTERFACE ${CATCH_INCLUDE_DIR})
 
@@ -39,6 +39,7 @@ if ((NOT FAST_BUILD OR ALL_TESTS) AND NOT (BUILD_EXTRA_UNIT_ONLY))
       TestFactor.cpp
       TestFilereader.cpp
       TestHighsCDouble.cpp
+      TestHighsExternalDeps.cpp
       TestHighsGFkSolve.cpp
       TestHighsHash.cpp
       TestHighsHessian.cpp
@@ -48,7 +49,7 @@ if ((NOT FAST_BUILD OR ALL_TESTS) AND NOT (BUILD_EXTRA_UNIT_ONLY))
       TestHighsRbTree.cpp
       TestHighsSparseMatrix.cpp
       TestHighsVersion.cpp
-      TestHipo.cpp
+      TestHiPdlp.cpp
       TestHSet.cpp
       TestICrash.cpp
       TestIis.cpp
@@ -57,7 +58,7 @@ if ((NOT FAST_BUILD OR ALL_TESTS) AND NOT (BUILD_EXTRA_UNIT_ONLY))
       TestIpm.cpp
       TestIpx.cpp
       TestLogging.cpp
-      TestLPFileFormat.cpp
+      TestLpFileFormat.cpp
       TestLpModification.cpp
       TestLpOrientation.cpp
       TestLpSolvers.cpp
@@ -70,30 +71,32 @@ if ((NOT FAST_BUILD OR ALL_TESTS) AND NOT (BUILD_EXTRA_UNIT_ONLY))
       TestOptions.cpp
       TestPdlp.cpp
       TestPresolve.cpp
+      TestPresolveRules.cpp
+      TestQpOracle.cpp
       TestQpSolver.cpp
       TestRanging.cpp
       TestRays.cpp
+      TestRunData.cpp
       TestSemiVariables.cpp
       TestSetup.cpp
       TestSort.cpp
       TestSpecialLps.cpp
+      TestSymmetry.cpp
       TestThrow.cpp
       TestTspSolver.cpp
       TestUserScale.cpp
       Avgas.cpp)
+
+
+  if (HIPO)
+      list(APPEND TEST_SOURCES TestHipo.cpp)
+  endif()
 
   set(OPT_LEVEL_CHANGED OFF)
 
   if(CMAKE_CXX_FLAGS_RELEASE MATCHES "-O[0-9s]" AND NOT CMAKE_CXX_FLAGS_RELEASE MATCHES "-O3")
     # message(MESSAGE "User has overridden the default optimization level for Release mode.")
     set(OPT_LEVEL_CHANGED ON)
-  endif()
-
-  if (LINUX AND NOT OPT_LEVEL_CHANGED AND CMAKE_CXX_COMPILER_ID STREQUAL "g++" AND CMAKE_SIZEOF_VOID_P EQUAL 8)
-    if (NOT ((${CMAKE_SYSTEM_PROCESSOR} STREQUAL "arm64")) AND 
-        NOT (${CMAKE_SYSTEM_PROCESSOR} MATCHES "riscv(32|64)"))
-        set(TEST_SOURCES ${TEST_SOURCES} TestLpSolversIterations.cpp)
-    endif()
   endif()
 
   if (BUILD_EXTRA_UNIT_TESTS)
@@ -109,6 +112,11 @@ if ((NOT FAST_BUILD OR ALL_TESTS) AND NOT (BUILD_EXTRA_UNIT_ONLY))
 
   set_target_properties(unit_tests PROPERTIES UNITY_BUILD OFF)
 
+  if (BUILD_SHARED_EXTRAS_LIB)
+    # get output directory of highs_extras (regardless of platform)
+    target_compile_definitions(unit_tests PRIVATE HIGHS_TEST_EXTRAS_DIR="$<TARGET_FILE_DIR:highs_extras>")
+  endif()
+
   if (UNIX)
       target_compile_options(unit_tests PRIVATE "-Wno-unused-variable")
       target_compile_options(unit_tests PRIVATE "-Wno-unused-const-variable")
@@ -118,13 +126,19 @@ if ((NOT FAST_BUILD OR ALL_TESTS) AND NOT (BUILD_EXTRA_UNIT_ONLY))
     target_link_libraries(unit_tests highs Catch)
 
     if (CUPDLP_GPU)
-        if (WIN32)
-            target_link_libraries(unit_tests cudalin ${CUDA_LIBRARY})
-        else()
-            target_link_libraries(unit_tests cudalin ${CUDA_LIBRARY} m)
-        endif()
+        # Link unit tests to cuda too!
         target_include_directories(unit_tests PRIVATE ${PROJECT_SOURCE_DIR}/highs/pdlp/cupdlp/cuda)
         set_target_properties(unit_tests PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
+        if (WIN32)
+            target_link_libraries(unit_tests ${CUDA_LIBRARY})
+        else()
+            target_link_libraries(unit_tests ${CUDA_LIBRARY} m)
+        endif()
+
+        # If cudalin is used, link to cudalin too.
+        if (NOT HIGHS_GPU_LIB)
+            target_link_libraries(unit_tests cudalin)
+        endif()
     endif()
   else()
     target_link_libraries(unit_tests libhighs Catch)
@@ -155,7 +169,9 @@ if ((NOT FAST_BUILD OR ALL_TESTS) AND NOT (BUILD_EXTRA_UNIT_ONLY))
   add_test(NAME capi_unit_tests COMMAND capi_unit_tests)
 
   # Check whether test executable builds OK.
-  if (NOT HIGHS_COVERAGE)
+  if ((NOT HIGHS_COVERAGE) AND
+        (NOT BUILD_OPENBLAS OR
+        (LINUX AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|amd64")))
     add_test(NAME unit-test-build
             COMMAND ${CMAKE_COMMAND}
                     --build ${HIGHS_BINARY_DIR}
@@ -222,6 +238,22 @@ if ((NOT FAST_BUILD OR ALL_TESTS) AND NOT (BUILD_EXTRA_UNIT_ONLY))
       "standmps\;218\; 1.4060175000\;"
    )
 
+   # GCC >= 15 at -O2 (RelWithDebInfo). Debug and Release (-O3, checked
+   # on GCC 16 MinGW) still match successInstances
+   set(successGcc15Instances
+      "25fv47\;3148\; 5.5018458883\;"
+      "80bau3b\;3705\; 9.8722419241\;"
+      "adlittle\;74\; 2.2549496316\;"
+      "afiro\;22\;-4.6475314286\;"
+      "etamacro\;536\;-7.5571523330\;"
+      "greenbea\;5247\;-7.2555248130\;"
+      "shell\;623\; 1.2088253460\;"
+      "stair\;531\;-2.5126695119\;"
+      "standata\;72\; 1.2576995000\;"
+      "standgub\;68\; 1.2576995000\;"
+      "standmps\;218\; 1.4060175000\;"
+   )
+
    set(successRiscVInstances
       "25fv47\;3103\; 5.5018458\;"
       "80bau3b\;3705\; 9.8722419\;"
@@ -254,8 +286,8 @@ if ((NOT FAST_BUILD OR ALL_TESTS) AND NOT (BUILD_EXTRA_UNIT_ONLY))
 
   set(failInstances
       )
-  
-  set(mipInstances 
+
+  set(mipInstances
       "small_mip\;3.2368421\;"
       "flugpl\;1201500\;"
       "lseu\;1120|1119.9999999\;"
@@ -280,7 +312,17 @@ if ((NOT FAST_BUILD OR ALL_TESTS) AND NOT (BUILD_EXTRA_UNIT_ONLY))
   #   "--parallel=on"
       )
 
-  if (UNIX AND NOT APPLE AND NOT CMAKE_CXX_COMPILER_ID STREQUAL "IntelLLVM")
+  if ((CMAKE_SIZEOF_VOID_P EQUAL 4) OR
+        (CMAKE_C_FLAGS MATCHES "-m32" OR CMAKE_CXX_FLAGS MATCHES "-m32"))
+    set(IS_32 ON)
+  else()
+    set(IS_32 OFF)
+  endif()
+
+  if (UNIX AND NOT APPLE AND
+        NOT CMAKE_CXX_COMPILER_ID STREQUAL "IntelLLVM"
+        AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|amd64"
+        AND NOT IS_32)
     if (CUPDLP_GPU)
         set(pdlpInstances
             "25fv47\; 5.501847\;"
@@ -298,23 +340,26 @@ if ((NOT FAST_BUILD OR ALL_TESTS) AND NOT (BUILD_EXTRA_UNIT_ONLY))
             "standgub\; 1.2576994\;"
             )
     else() # CUPDLP_CPU
+        # Trimmed so both GCC <= 14 and GCC 15 results match
         set(pdlpInstances
-            "25fv47\; 5.5018469\;"
+            "25fv47\; 5.50184\;"
             "adlittle\; 2.254949\;"
-            "afiro\;-4.64753150\;"
+            "afiro\;-4.6475315\;"
             "avgas\;-7.7499999\;"
             "blending\;-3.1999999\;"
             "chip\;-8.9999999\;"
-            "e226\;-1.16389294\;"
-            "scrs8\; 9.04297094\;"
+            "e226\;-1.16389\;"
+            "scrs8\; 9.0429\;"
             "sctest\; 5.75000000\;"
-            "shell\; 1.20882534\;"
-            "stair\;-2.51266942\;"
-            "standata\; 1.25769944\;"
-            "standgub\; 1.25769944\;"
+            "shell\; 1.2088253\;"
+            "stair\;-2.512669\;"
+            "standata\; 1.2576994\;"
+            "standgub\; 1.2576994\;"
             )
     endif()
-  elseif(WIN32 AND NOT CMAKE_CXX_COMPILER_ID STREQUAL "IntelLLVM")
+  elseif(WIN32 AND NOT CMAKE_CXX_COMPILER_ID STREQUAL "IntelLLVM" AND
+            NOT (CMAKE_SIZEOF_VOID_P EQUAL 4) AND
+            CMAKE_SYSTEM_PROCESSOR MATCHES "AMD64|x86_64")
     if (CUPDLP_GPU)
         set(pdlpInstances
             "25fv47\; 5.50184\;"
@@ -335,17 +380,17 @@ if ((NOT FAST_BUILD OR ALL_TESTS) AND NOT (BUILD_EXTRA_UNIT_ONLY))
         # on windows 25fv47 model status can be unknown, with objective 5.5018458957e+03
         set(pdlpInstances
             "25fv47\; 5.50184\;"
-            "adlittle\; 2.25494944\;"
+            "adlittle\; 2.254949\;"
             "afiro\;-4.647531504\;"
             "avgas\;-7.7499999\;"
             "blending\;-3.19999999\;"
             "chip\;-8.9999999\;"
-            "scrs8\; 9.04297094\;"
+            "scrs8\; 9.04297\;"
             "sctest\; 5.7500000\;"
             "shell\; 1.20882534\;"
-            "stair\;-2.51266942\;"
-            "standata\; 1.257699393\;"
-            "standgub\; 1.25769939\;"
+            "stair\;-2.512669\;"
+            "standata\; 1.25769\;"
+            "standgub\; 1.25769\;"
             )
     endif()
   elseif(APPLE)
@@ -408,7 +453,7 @@ if ((NOT FAST_BUILD OR ALL_TESTS) AND NOT (BUILD_EXTRA_UNIT_ONLY))
 
           if(${solutionstatus} STREQUAL "Optimal")
               if(${setting} STREQUAL "--presolve=off" AND 
-                (NOT CMAKE_CXX_COMPILER_ID STREQUAL "IntelLLVM") AND 
+                (NOT CMAKE_CXX_COMPILER_ID STREQUAL "IntelLLVM") AND
                 (NOT OPT_LEVEL_CHANGED) AND
                 (CMAKE_SIZEOF_VOID_P EQUAL 8))
                   set_tests_properties (${name}${setting} PROPERTIES
@@ -431,8 +476,15 @@ if ((NOT FAST_BUILD OR ALL_TESTS) AND NOT (BUILD_EXTRA_UNIT_ONLY))
     if(${CMAKE_SYSTEM_PROCESSOR} MATCHES "riscv64")
         add_instancetests(successRiscVInstances "Optimal")
     endif()
-  else()
-    add_instancetests(successInstances "Optimal")
+  elseif(NOT (CMAKE_SYSTEM_PROCESSOR MATCHES "arm|aarch64") AND
+             NOT IS_32)
+    if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND
+        CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 15 AND
+        CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
+      add_instancetests(successGcc15Instances "Optimal")
+    else()
+      add_instancetests(successInstances "Optimal")
+    endif()
   endif()
 
   add_instancetests(failInstances "Fail")
@@ -499,7 +551,7 @@ endif()
 
 if (BUILD_EXTRA_UNIT_TESTS AND BUILD_EXTRA_UNIT_ONLY)
     # prepare Catch library
-    set(CATCH_INCLUDE_DIR ${PROJECT_SOURCE_DIR}/extern)
+    set(CATCH_INCLUDE_DIR ${PROJECT_SOURCE_DIR}/extern/catch)
     add_library(Catch INTERFACE)
     target_include_directories(Catch INTERFACE ${CATCH_INCLUDE_DIR})
 

@@ -5,6 +5,7 @@
 
 #include "Info.h"
 #include "IpmData.h"
+#include "LinearSolver.h"
 #include "Model.h"
 #include "ipm/hipo/auxiliary/IntConfig.h"
 
@@ -20,53 +21,58 @@ struct NewtonDir {
   std::vector<double> zu{};
 
   NewtonDir(Int m, Int n);
+  void clear();
+  void add(const NewtonDir& d);
+};
+
+struct Residuals {
+  std::vector<double> r1, r2, r3, r4, r5, r6;
 };
 
 struct Iterate {
-  // lp model
-  const Model* model;
-
-  // record of data at each iteration
+  Model& model;
+  Info& info;
   IpmData data;
-
-  // ipm point
   std::vector<double> x, xl, xu, y, zl, zu;
-
-  // residuals
-  std::vector<double> res1, res2, res3, res4, res5, res6;
-
-  // Newton direction
+  Residuals res;
   NewtonDir delta;
-
-  // indicators
   double pobj, dobj, pinf, dinf, pdgap;
-
   double mu;
   std::vector<double> scaling;
-
-  // smallest value of mu seen so far
   double best_mu;
+  const Regularisation& regul;
+  std::vector<double> total_reg;
+  double* Rp;
+  double* Rd;
+  Residuals ires;  // residuals for iterative refinement
 
-  // regularisation values
-  Regularisation& regul;
+  // statistics for stagnation
+  Int bad_iter_{};
+  double largest_dx_x_{}, largest_dy_y_{};
+  double best_pinf_ = kHighsInf, best_dinf_ = kHighsInf;
+
+  double best_violation = kHighsInf;
+  Int best_iter = -1;
+  std::vector<double> best_x, best_xl, best_xu, best_y, best_zl, best_zu;
 
   // ===================================================================================
   // Functions to construct, clear and check for nan or inf
   // ===================================================================================
-  Iterate(const Model& model_input, Regularisation& r);
+  Iterate(Model& model_input, Info& info_input, Regularisation& r);
 
   // clear existing data
   void clearIter();
   void clearRes();
   void clearDir();
+  void clearIres();
 
   // check if any component is nan or infinite
   bool isNan() const;
   bool isInf() const;
   bool isResNan() const;
   bool isResInf() const;
-  bool isDirNan() const;
-  bool isDirInf() const;
+  bool isDirNan(const NewtonDir& d) const;
+  bool isDirInf(const NewtonDir& d) const;
 
   // ===================================================================================
   // Compute:
@@ -112,7 +118,7 @@ struct Iterate {
   //  res1 = rhs - A * x
   //  res2 = lower - x + xl
   //  res3 = upper - x - xu
-  //  res4 = c - A^T * y - zl + zu
+  //  res4 = c - A^T * y - zl + zu + Q * x
   // Components of residuals 2,3 are set to zero if the corresponding
   // upper/lower bound is not finite.
   // ===================================================================================
@@ -133,34 +139,14 @@ struct Iterate {
   // (the computation of res7 takes into account only the components for which
   // the correspoding upper/lower bounds are finite)
   // ===================================================================================
-  std::vector<double> residual7() const;
+  std::vector<double> residual7(const Residuals& r) const;
 
   // ===================================================================================
   // Compute:
   //  res8 = res1 + A * Theta * res7
   // ===================================================================================
-  std::vector<double> residual8(const std::vector<double>& res7) const;
-
-  // ===================================================================================
-  // Extract solution to be returned to user:
-  // - remove extra slacks from x, xl, xu, zl, zu
-  // - adjust sign of y for inequality constraints
-  // - compute and adjust sign of slacks
-  // ===================================================================================
-  void extract(std::vector<double>& x_user, std::vector<double>& xl_user,
-               std::vector<double>& xu_user, std::vector<double>& slack_user,
-               std::vector<double>& y_user, std::vector<double>& zl_user,
-               std::vector<double>& zu_user) const;
-
-  // ===================================================================================
-  // Extract complementary solution to be used for crossover with IPX:
-  // - drop variables to obtain complementary (x,y,z)
-  // - adjust y based on z-slacks
-  // - compute slacks
-  // - remove extra slacks from x, z
-  // ===================================================================================
-  void extract(std::vector<double>& x_user, std::vector<double>& slack_user,
-               std::vector<double>& y_user, std::vector<double>& z_user) const;
+  std::vector<double> residual8(const Residuals& r,
+                                const std::vector<double>& res7) const;
 
   // ===================================================================================
   // Construct a complementary point (x,y,z), such that for each j, either xj is
@@ -170,11 +156,23 @@ struct Iterate {
                              std::vector<double>& y_cmp,
                              std::vector<double>& z_cmp) const;
 
+  void finalResiduals() const;
+
   // ===================================================================================
-  // Compute residuals after solution has been found, postprocessed and
-  // unscaled.
+  // Compute residual of 6x6 linear system for iterative refinement.
   // ===================================================================================
-  void finalResiduals(Info& info) const;
+  void residuals6x6(const NewtonDir& d);
+
+  void makeStep(double alpha_primal, double alpha_dual);
+
+  void saveBest(double feas_tol, double opt_tol, Int iter);
+  bool resetBest(Int iter);
+
+  bool stagnation(std::stringstream& log_stream);
+
+  void getReg(LinearSolver& LS, const std::string& nla);
+
+  void assertConsistency(Int n, Int m) const;
 };
 
 }  // namespace hipo

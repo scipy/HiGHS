@@ -4,27 +4,12 @@
 
 namespace hipo {
 
-void counts2Ptr(std::vector<Int>& ptr, std::vector<Int>& w) {
-  // Given the column counts in the vector w (of size n),
-  // compute the column pointers in the vector ptr (of size n+1),
-  // and copy the first n pointers back into w.
-
-  Int temp_nz{};
-  Int n = w.size();
-  for (Int j = 0; j < n; ++j) {
-    ptr[j] = temp_nz;
-    temp_nz += w[j];
-    w[j] = ptr[j];
-  }
-  ptr[n] = temp_nz;
-}
-
 void inversePerm(const std::vector<Int>& perm, std::vector<Int>& iperm) {
   // Given the permutation perm, produce the inverse permutation iperm.
   // perm[i] : i-th entry to use in the new order.
   // iperm[i]: where entry i is located in the new order.
 
-  for (Int i = 0; i < perm.size(); ++i) {
+  for (Int i = 0; i < static_cast<Int>(perm.size()); ++i) {
     iperm[perm[i]] = i;
   }
 }
@@ -41,21 +26,19 @@ void subtreeSize(const std::vector<Int>& parent, std::vector<Int>& sizes) {
   }
 }
 
-void transpose(const std::vector<Int>& ptr, const std::vector<Int>& rows,
-               std::vector<Int>& ptrT, std::vector<Int>& rowsT) {
+void transpose(Int n, Int nz, const Int* ptr, const Int* rows, Int* ptrT,
+               Int* rowsT) {
   // Compute the transpose of the matrix and return it in rowsT and ptrT
-
-  Int n = ptr.size() - 1;
 
   std::vector<Int> work(n);
 
   // count the entries in each row into work
-  for (Int i = 0; i < ptr.back(); ++i) {
+  for (Int i = 0; i < nz; ++i) {
     ++work[rows[i]];
   }
 
   // sum row sums to obtain pointers
-  counts2Ptr(ptrT, work);
+  counts2Ptr(n, ptrT, work.data());
 
   for (Int j = 0; j < n; ++j) {
     for (Int el = ptr[j]; el < ptr[j + 1]; ++el) {
@@ -69,21 +52,24 @@ void transpose(const std::vector<Int>& ptr, const std::vector<Int>& rows,
 }
 
 void transpose(const std::vector<Int>& ptr, const std::vector<Int>& rows,
-               const std::vector<double>& val, std::vector<Int>& ptrT,
-               std::vector<Int>& rowsT, std::vector<double>& valT) {
-  // Compute the transpose of the matrix and return it in rowsT, ptrT and valT
+               std::vector<Int>& ptrT, std::vector<Int>& rowsT) {
+  transpose(ptr.size() - 1, rows.size(), ptr.data(), rows.data(), ptrT.data(),
+            rowsT.data());
+}
 
-  Int n = ptr.size() - 1;
+void transpose(Int n, Int nz, const Int* ptr, const Int* rows,
+               const double* val, Int* ptrT, Int* rowsT, double* valT) {
+  // Compute the transpose of the matrix and return it in rowsT, ptrT and valT
 
   std::vector<Int> work(n);
 
   // count the entries in each row into work
-  for (Int i = 0; i < ptr.back(); ++i) {
+  for (Int i = 0; i < nz; ++i) {
     ++work[rows[i]];
   }
 
   // sum row sums to obtain pointers
-  counts2Ptr(ptrT, work);
+  counts2Ptr(n, ptrT, work.data());
 
   for (Int j = 0; j < n; ++j) {
     for (Int el = ptr[j]; el < ptr[j + 1]; ++el) {
@@ -97,46 +83,82 @@ void transpose(const std::vector<Int>& ptr, const std::vector<Int>& rows,
   }
 }
 
-void symProduct(const std::vector<Int>& ptr, const std::vector<Int>& rows,
-                const std::vector<double>& vals, const std::vector<double>& x,
-                std::vector<double>& y, double alpha) {
-  // Matrix-vector product in CSC format, for symmetric matrix which stores only
-  // the lower triangle.
-  // Compute y = y + alpha * M * x
-
-  const Int n = ptr.size() - 1;
-
-  for (Int col = 0; col < n; ++col) {
-    for (Int el = ptr[col]; el < ptr[col + 1]; ++el) {
-      Int row = rows[el];
-      double val = vals[el];
-
-      y[row] += alpha * val * x[col];
-      if (row != col) y[col] += alpha * val * x[row];
-    }
-  }
+void transpose(const std::vector<Int>& ptr, const std::vector<Int>& rows,
+               const std::vector<double>& val, std::vector<Int>& ptrT,
+               std::vector<Int>& rowsT, std::vector<double>& valT) {
+  transpose(ptr.size() - 1, rows.size(), ptr.data(), rows.data(), val.data(),
+            ptrT.data(), rowsT.data(), valT.data());
 }
 
-void symProductQuad(const std::vector<Int>& ptr, const std::vector<Int>& rows,
-                    const std::vector<double>& vals,
-                    const std::vector<double>& x, std::vector<HighsCDouble>& y,
-                    double alpha) {
-  // Matrix-vector product in CSC format, for symmetric matrix which stores only
-  // the lower triangle.
-  // Compute y = y + alpha * M * x
+void permuteSym(const std::vector<Int>& iperm, std::vector<Int>& ptr,
+                std::vector<Int>& rows, std::vector<double>& val, bool lower) {
+  // Symmetric permutation of the lower (upper) triangular matrix M based on
+  // inverse permutation iperm. The resulting matrix is lower (upper)
+  // triangular, regardless of the input matrix.
 
   const Int n = ptr.size() - 1;
+  std::vector<Int> work(n, 0);
+  const bool use_val = !val.empty();
 
-  for (Int col = 0; col < n; ++col) {
-    for (Int el = ptr[col]; el < ptr[col + 1]; ++el) {
-      Int row = rows[el];
-      HighsCDouble val = vals[el];
+  // go through the columns to count the nonzeros
+  for (Int j = 0; j < n; ++j) {
+    // get new index of column
+    const Int col = iperm[j];
 
-      y[row] += val * (HighsCDouble)x[col] * (HighsCDouble)alpha;
-      if (row != col)
-        y[col] += val * (HighsCDouble)x[row] * (HighsCDouble)alpha;
+    // go through elements of column
+    for (Int el = ptr[j]; el < ptr[j + 1]; ++el) {
+      const Int i = rows[el];
+
+      // ignore potential entries in upper(lower) triangular part
+      if ((lower && i < j) || (!lower && i > j)) continue;
+
+      // get new index of row
+      const Int row = iperm[i];
+
+      // if only lower triangular part is used, col is smaller than row
+      Int actual_col = lower ? std::min(row, col) : std::max(row, col);
+      ++work[actual_col];
     }
   }
+
+  std::vector<Int> new_ptr(n + 1);
+
+  // get column pointers by summing the count of nonzeros in each column.
+  // copy column pointers into work
+  counts2Ptr(n, new_ptr.data(), work.data());
+
+  std::vector<Int> new_rows(new_ptr.back());
+  std::vector<double> new_val;
+  if (use_val) new_val.resize(new_ptr.back());
+
+  // go through the columns to assign row indices
+  for (Int j = 0; j < n; ++j) {
+    // get new index of column
+    const Int col = iperm[j];
+
+    // go through elements of column
+    for (Int el = ptr[j]; el < ptr[j + 1]; ++el) {
+      const Int i = rows[el];
+
+      // ignore potential entries in upper triangular part
+      if ((lower && i < j) || (!lower && i > j)) continue;
+
+      // get new index of row
+      const Int row = iperm[i];
+
+      // if only lower triangular part is used, col is smaller than row
+      const Int actual_col = lower ? std::min(row, col) : std::max(row, col);
+      const Int actual_row = lower ? std::max(row, col) : std::min(row, col);
+
+      Int pos = work[actual_col]++;
+      new_rows[pos] = actual_row;
+      if (use_val) new_val[pos] = val[el];
+    }
+  }
+
+  ptr = std::move(new_ptr);
+  rows = std::move(new_rows);
+  if (use_val) val = std::move(new_val);
 }
 
 void childrenLinkedList(const std::vector<Int>& parent, std::vector<Int>& head,
@@ -250,9 +272,11 @@ void processEdge(Int j, Int i, const std::vector<Int>& first,
   prevleaf[i] = j;
 }
 
-double getDiagStart(Int n, Int k, Int nb, Int n_blocks, std::vector<Int>& start,
-                    bool triang) {
+Int64 getDiagStart(Int n, Int k, Int nb, Int n_blocks,
+                   std::vector<Int64>& start, bool triang) {
   // start position of diagonal blocks for blocked dense formats
+  if (n_blocks == 0) return 0;
+
   start.assign(n_blocks, 0);
   for (Int i = 1; i < n_blocks; ++i) {
     start[i] = start[i - 1] + nb * (n - (i - 1) * nb);
@@ -260,9 +284,71 @@ double getDiagStart(Int n, Int k, Int nb, Int n_blocks, std::vector<Int>& start,
   }
 
   Int jb = std::min(nb, k - (n_blocks - 1) * nb);
-  double result = (double)start.back() + (double)(n - (n_blocks - 1) * nb) * jb;
-  if (triang) result -= (double)jb * (jb - 1) / 2;
+  Int64 result = start.back() + (Int64)(n - (n_blocks - 1) * nb) * jb;
+  if (triang) result -= jb * (jb - 1) / 2;
   return result;
+}
+
+Int maxDepthTree(const std::vector<Int>& parent) {
+  Int max_depth = 0;
+  Int n = parent.size();
+  std::vector<Int> depth(n, -1);
+  for (Int i = 0; i < n; ++i) {
+    Int node = i;
+    Int value = 1;
+    while (node != -1) {
+      if (value > depth[node]) {
+        depth[node] = value;
+      } else
+        break;
+
+      ++value;
+      node = parent[node];
+    }
+    if (parent[i] == -1) max_depth = std::max(max_depth, depth[i]);
+  }
+  return max_depth;
+}
+
+void fullFromLower(Int n, Int nz, const Int* ptrL, const Int* rowsL,
+                   std::vector<Int>& ptrF, std::vector<Int>& rowsF) {
+  // Given a sparse matrix in lower triangular format, build the same matrix in
+  // full format, without diagonal entries.
+
+  std::vector<Int> rowsU(nz);
+  std::vector<Int> ptrU(n + 1);
+  transpose(n, nz, ptrL, rowsL, ptrU.data(), rowsU.data());
+
+  std::vector<Int> work(n);
+  for (Int j = 0; j < n; ++j) {
+    for (Int el = ptrU[j]; el < ptrU[j + 1]; ++el) {
+      const Int i = rowsU[el];
+      if (i == j) continue;
+      ++work[j];
+      ++work[i];
+    }
+  }
+
+  ptrF.assign(n + 1, 0);
+  counts2Ptr(n, ptrF.data(), work.data());
+  rowsF.assign(ptrF.back(), 0);
+  for (Int j = 0; j < n; ++j) {
+    for (Int el = ptrU[j]; el < ptrU[j + 1]; ++el) {
+      const Int i = rowsU[el];
+      if (i == j) continue;
+      rowsF[work[j]++] = i;
+      rowsF[work[i]++] = j;
+    }
+  }
+}
+
+double snFlops(double size, double clique_size) {
+  return (size + clique_size) * (size + clique_size) * size -
+         (size + clique_size) * size * (size + 1) +
+         size * (size + 1) * (2 * size + 1) / 6;
+}
+double snSpops(double clique_size) {
+  return clique_size * (clique_size + 1) / 2;
 }
 
 Clock::Clock() { start(); }
@@ -272,5 +358,10 @@ double Clock::stop() const {
   std::chrono::duration<double> d = t1 - t0;
   return d.count();
 }
+
+TempTimer::TempTimer(const char* s) : name{s} {}
+void TempTimer::start() { clock.start(); }
+void TempTimer::stop() { time += clock.stop(); }
+TempTimer::~TempTimer() { printf("Measured %10s: %e\n", name.c_str(), time); }
 
 }  // namespace hipo

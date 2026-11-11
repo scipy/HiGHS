@@ -5,9 +5,10 @@
 #include <vector>
 
 #include "DataCollector.h"
+#include "FactorHighsOptions.h"
 #include "Symbolic.h"
 #include "ipm/hipo/auxiliary/IntConfig.h"
-#include "ipm/hipo/auxiliary/Log.h"
+#include "ipm/hipo/auxiliary/Logger.h"
 
 namespace hipo {
 
@@ -25,14 +26,14 @@ class Analyse {
   // info about matrix and factor
   Int n_{};
   Int nz_{};
-  int64_t nz_factor_{};
+  Int64 nz_factor_{};
   double dense_ops_{};
   double dense_ops_norelax_{};
   double sparse_ops_{};
   double critical_ops_{};
   std::vector<Int> signs_{};
 
-  // Permutation and inverse permutation from Metis
+  // Permutation and inverse permutation
   std::vector<Int> perm_{};
   std::vector<Int> iperm_{};
 
@@ -47,19 +48,19 @@ class Analyse {
 
   // sparsity pattern of supernodes of L
   std::vector<Int> rows_sn_{};
-  std::vector<Int> ptr_sn_{};
+  std::vector<Int64> ptr_sn_{};
 
   std::vector<Int> sn_indices_{};
 
   // fundamental supernodes information
   Int sn_count_{};
-  int64_t artificial_nz_{};
+  Int64 artificial_nz_{};
   std::vector<Int> sn_belong_{};
   std::vector<Int> sn_start_{};
   std::vector<Int> sn_parent_{};
 
   // temporary storage for relaxing supernodes
-  std::vector<Int> fake_nz_{};
+  std::vector<Int64> fake_nz_{};
   std::vector<Int> merged_into_{};
   Int merged_sn_{};
 
@@ -75,39 +76,50 @@ class Analyse {
   // estimate of maximum storage
   double serial_storage_{};
 
-  std::vector<std::vector<Int>> clique_block_start_{};
+  Int64 max_stack_size_{};
 
-  // block size
-  Int nb_{};
+  std::vector<std::vector<Int64>> clique_block_start_{};
 
-  const Log* log_;
+  const FHoptions& FH_opt_;
+
+  const Logger* logger_;
   DataCollector& data_;
 
+  TreeSchedule schedule_solve_;
+
+  double ops_solve_;
+  double critical_ops_solve_;
+  std::vector<double> task_ops_solve_;
+
   // Functions to perform analyse phase
-  Int getPermutation();
   void permute(const std::vector<Int>& iperm);
   void eTree();
   void postorder();
   void colCount();
   void fundamentalSupernodes();
   void relaxSupernodes();
-  void relaxSupernodesSize();
+  void relaxSnMaxNz(double& flops, double& spops);
+  double doRelaxSnMaxNz(double& flops, double& spops, Int64 max_artificial_nz);
   void afterRelaxSn();
+  void relaxSnNetOps(double& flops, double& spops);
   void snPattern();
   void relativeIndCols();
   void relativeIndClique();
   void reorderChildren();
-  void computeStorage();
-  void computeStorage(Int fr, Int sz, double& fr_entries,
-                      double& cl_entries) const;
+  void computeStorage(Int fr, Int sz, Int64& fr_entries,
+                      Int64& cl_entries) const;
   void computeCriticalPath();
+  void computeCriticalPathSolve();
   void computeBlockStart();
+  void computeStackSize();
+  void computeTreeScheduleSolve();
+  Int checkOverflow() const;
 
  public:
   // Constructor: matrix must be in lower triangular format
-  Analyse(const std::vector<Int>& rows, const std::vector<Int>& ptr,
-          const std::vector<Int>& signs, Int nb, const Log* log,
-          DataCollector& data);
+  Analyse(Int n, Int nz, const Int* rows, const Int* ptr, const Int* signs,
+          const FHoptions& FH_opt, const Logger* logger, DataCollector& data,
+          const Int* perm);
 
   // Run analyse phase and save the result in Symbolic object S
   Int run(Symbolic& S);

@@ -5,16 +5,15 @@
 #include "ReturnValues.h"
 #include "Swaps.h"
 #include "ipm/hipo/auxiliary/Auxiliary.h"
-#include "ipm/hipo/auxiliary/Log.h"
 
 namespace hipo {
 
 // Factorisation with "hybrid formats".
 
-Int denseFactFH(char format, Int n, Int k, Int nb, double* A, double* B,
-                const Int* pivot_sign, double thresh, const Regul& regval,
-                double* totalreg, Int* swaps, double* pivot_2x2, bool parnode,
-                DataCollector& data) {
+Int denseFactFH(char format, Int n, Int k, double* A, double* B,
+                const Int* pivot_sign, double thresh, double* totalreg,
+                Int* swaps, double* pivot_2x2, DataCollector& data,
+                const FHoptions& options) {
   // ===========================================================================
   // Partial blocked factorisation
   // Matrix A is in format FH
@@ -23,9 +22,7 @@ Int denseFactFH(char format, Int n, Int k, Int nb, double* A, double* B,
   // BLAS calls: dcopy, dscal, daxpy, dgemm, dtrsm
   // ===========================================================================
 
-#if HIPO_TIMING_LEVEL >= 2
-  Clock clock;
-#endif
+  HIPO_CLOCK_CREATE;
 
   // check input
   if (n < 0 || k < 0 || !A || (k < n && !B)) return kRetInvalidInput;
@@ -33,11 +30,13 @@ Int denseFactFH(char format, Int n, Int k, Int nb, double* A, double* B,
   // quick return
   if (n == 0) return kRetOk;
 
+  const Int nb = options.nb;
+
   // number of blocks of columns
   const Int n_blocks = (k - 1) / nb + 1;
 
   // start of diagonal blocks
-  std::vector<Int> diag_start(n_blocks);
+  std::vector<Int64> diag_start(n_blocks);
   getDiagStart(n, k, nb, n_blocks, diag_start);
 
   // size of blocks
@@ -63,6 +62,8 @@ Int denseFactFH(char format, Int n, Int k, Int nb, double* A, double* B,
   for (Int j = 0; j < n_blocks; ++j) {
     // j is the index of the block column
 
+    HIPO_CLOCK_START(2);
+
     // jb is the number of columns
     const Int jb = std::min(nb, k - nb * j);
 
@@ -77,7 +78,7 @@ Int denseFactFH(char format, Int n, Int k, Int nb, double* A, double* B,
     const Int M = n - nb * j - jb;
 
     // block of columns below diagonal block j
-    const Int R_pos = diag_start[j] + this_diag_size;
+    const Int64 R_pos = diag_start[j] + this_diag_size;
     double* R = &A[R_pos];
 
     // ===========================================================================
@@ -85,7 +86,7 @@ Int denseFactFH(char format, Int n, Int k, Int nb, double* A, double* B,
     // ===========================================================================
     double max_in_R = -1.0;
     if (jb == 1) {
-      for (Int i = 0; i < M * jb; ++i)
+      for (Int64 i = 0; i < M * jb; ++i)
         max_in_R = std::max(max_in_R, std::abs(R[i]));
     }
 
@@ -94,18 +95,18 @@ Int denseFactFH(char format, Int n, Int k, Int nb, double* A, double* B,
                                         &pivot_sign[j * nb] + jb);
     Int* swaps_current = &swaps[j * nb];
     double* pivot_2x2_current = &pivot_2x2[j * nb];
-    Int info =
-        denseFactK('U', jb, D, jb, pivot_sign_current.data(), thresh, regval,
-                   regul_current, swaps_current, pivot_2x2_current, data);
+    Int info = denseFactK('U', jb, D, jb, pivot_sign_current.data(), thresh,
+                          regul_current, swaps_current, pivot_2x2_current, data,
+                          options);
     if (info != 0) return info;
 
-#ifdef HIPO_PIVOTING
-    // swap columns in R
-    applySwaps(swaps_current, M, jb, R, data);
+    if (options.pivoting) {
+      // swap columns in R
+      applySwaps(swaps_current, M, jb, R, data);
 
-    // unswap regularisation, to keep it with original ordering
-    permuteWithSwaps(regul_current, swaps_current, jb, true);
-#endif
+      // unswap regularisation, to keep it with original ordering
+      permuteWithSwaps(regul_current, swaps_current, jb, true);
+    }
 
     if (M > 0) {
       // ===========================================================================
@@ -151,7 +152,7 @@ Int denseFactFH(char format, Int n, Int k, Int nb, double* A, double* B,
 
       // check entries of L
       /*double max_in_R = -1.0;
-      for (Int i = 0; i < M * jb; ++i) {
+      for (Int64 i = 0; i < M * jb; ++i) {
         max_in_R = std::max(max_in_R, std::abs(R[i]));
       }
       if (max_in_R > 1e8) printf("%.1e, %5d %5d\n", max_in_R, jb, M);*/
@@ -159,7 +160,7 @@ Int denseFactFH(char format, Int n, Int k, Int nb, double* A, double* B,
       // ===========================================================================
       // UPDATE FRONTAL
       // ===========================================================================
-      Int offset{};
+      Int64 offset{};
 
       // go through remaining blocks of columns
       for (Int jj = j + 1; jj < n_blocks; ++jj) {
@@ -174,7 +175,7 @@ Int denseFactFH(char format, Int n, Int k, Int nb, double* A, double* B,
         const double* Rjj = &R[offset];
 
         // perform gemm (potentially) in parallel
-        if (parnode)
+        if (options.parallel_node)
           dgemmParallel(P, Rjj, Q, col_jj, jb, row_jj, nb, 1.0, data);
         else
           callAndTime_dgemm('T', 'N', col_jj, row_jj, jb, -1.0, P, jb, Rjj, jb,
@@ -182,17 +183,14 @@ Int denseFactFH(char format, Int n, Int k, Int nb, double* A, double* B,
 
         offset += jb * col_jj;
       }
-
-#if HIPO_TIMING_LEVEL >= 2
-      data.sumTime(kTimeDenseFact_main, clock.stop());
-      clock.start();
-#endif
+      HIPO_CLOCK_STOP(2, data, kTimeDenseFact_main);
 
       // ===========================================================================
       // UPDATE SCHUR COMPLEMENT
       // ===========================================================================
+      HIPO_CLOCK_START(2);
       if (k < n) {
-        Int B_offset{};
+        Int64 B_offset{};
 
         // go through blocks of columns of the Schur complement
         for (Int sb = 0; sb < s_blocks; ++sb) {
@@ -210,7 +208,7 @@ Int denseFactFH(char format, Int n, Int k, Int nb, double* A, double* B,
           double beta = format == 'P' ? 0.0 : 1.0;
 
           // perform gemm (potentially) in parallel
-          if (parnode)
+          if (options.parallel_node)
             dgemmParallel(P, Rjj, Q, ncol, jb, nrow, nb, beta, data);
           else
             callAndTime_dgemm('T', 'N', ncol, nrow, jb, -1.0, P, jb, Rjj, jb,
@@ -231,10 +229,7 @@ Int denseFactFH(char format, Int n, Int k, Int nb, double* A, double* B,
           offset += jb * ncol;
         }
       }
-#if HIPO_TIMING_LEVEL >= 2
-      data.sumTime(kTimeDenseFact_schur, clock.stop());
-      clock.start();
-#endif
+      HIPO_CLOCK_STOP(2, data, kTimeDenseFact_schur);
     }
   }
 
@@ -249,14 +244,12 @@ Int denseFactFP2FH(double* A, Int nrow, Int ncol, Int nb, DataCollector& data) {
   // BLAS calls: dcopy
   // ===========================================================================
 
-#if HIPO_TIMING_LEVEL >= 2
-  Clock clock;
-#endif
+  HIPO_CLOCK_CREATE;
 
   std::vector<double> buf(nrow * nb);
 
-  Int startAtoBuf = 0;
-  Int startBuftoA = 0;
+  Int64 startAtoBuf = 0;
+  Int64 startBuftoA = 0;
 
   for (Int k = 0; k <= (ncol - 1) / nb; ++k) {
     // Number of columns in the block. Can be smaller than nb for last block.
@@ -279,9 +272,7 @@ Int denseFactFP2FH(double* A, Int nrow, Int ncol, Int nb, DataCollector& data) {
     }
   }
 
-#if HIPO_TIMING_LEVEL >= 2
-  data.sumTime(kTimeDenseFact_convert, clock.stop());
-#endif
+  HIPO_CLOCK_STOP(2, data, kTimeDenseFact_convert);
 
   return kRetOk;
 }

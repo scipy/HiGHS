@@ -21,10 +21,6 @@ class HighsTask {
   friend class HighsSplitDeque;
 
  public:
-  enum Constants {
-    kMaxTaskSize = 64,
-  };
-
   class Interrupt {};
 
  private:
@@ -53,7 +49,7 @@ class HighsTask {
     }
   };
 
-  char taskData[kMaxTaskSize - sizeof(Metadata)];
+  char taskData[HighsSchedulerConstants::kMaxTaskSize - sizeof(Metadata)];
   Metadata metadata;
 
   CallableBase& getCallable() {
@@ -122,7 +118,7 @@ class HighsTask {
     uintptr_t xormask = reinterpret_cast<uintptr_t>(owner) ^
                         reinterpret_cast<uintptr_t>(stealer);
     uintptr_t state =
-        metadata.stealer.fetch_xor(xormask, std::memory_order_relaxed);
+        metadata.stealer.fetch_xor(xormask, std::memory_order_acquire);
 
     assert(stealer != nullptr);
 

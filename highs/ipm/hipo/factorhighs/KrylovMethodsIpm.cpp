@@ -54,7 +54,7 @@ void IpmMatrix::apply(std::vector<double>& x) const {
 }
 
 IpmFactor::IpmFactor(const Numeric& N) : N_{N} {}
-void IpmFactor::apply(std::vector<double>& x) const { N_.solve(x); }
+void IpmFactor::apply(std::vector<double>& x) const { N_.solve(x.data()); }
 
 void NeDiagPrec::reset(const HighsSparseMatrix& A,
                        const std::vector<double>& scaling) {
@@ -72,11 +72,12 @@ void NeDiagPrec::reset(const HighsSparseMatrix& A,
   }
 
   // compute inverse of diagonal entries
-  for (Int i = 0; i < diag.size(); ++i) diag[i] = 1.0 / diag[i];
+  for (Int i = 0; i < static_cast<Int>(diag.size()); ++i)
+    diag[i] = 1.0 / diag[i];
 }
 void NeDiagPrec::apply(std::vector<double>& x) const {
   // apply diagonal preconditioner
-  for (Int i = 0; i < diag.size(); ++i) x[i] *= diag[i];
+  for (Int i = 0; i < static_cast<Int>(diag.size()); ++i) x[i] *= diag[i];
 }
 
 }  // namespace hipo

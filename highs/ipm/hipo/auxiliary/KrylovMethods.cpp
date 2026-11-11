@@ -4,16 +4,15 @@
 #include <iostream>
 
 #include "VectorOperations.h"
-#include "ipm/hipo/auxiliary/Log.h"
 
 namespace hipo {
 
-void applyRotation(double& x, double& y, double c, double s) {
+static void applyRotation(double& x, double& y, double c, double s) {
   double t = c * x + s * y;
   y = -s * x + c * y;
   x = t;
 }
-void getRotation(double x, double y, double& c, double& s) {
+static void getRotation(double x, double y, double& c, double& s) {
   if (y == 0.0) {
     c = 1.0;
     s = 0.0;
@@ -27,8 +26,9 @@ void getRotation(double x, double y, double& c, double& s) {
     s = t * c;
   }
 }
-void update(std::vector<double>& x, Int k, std::vector<double>& H, Int ldh,
-            std::vector<double>& s, std::vector<std::vector<double>>& V) {
+static void update(std::vector<double>& x, Int k, std::vector<double>& H,
+                   Int ldh, std::vector<double>& s,
+                   std::vector<std::vector<double>>& V) {
   // Solve H * y = s
   std::vector<double> y = s;
   for (Int i = k; i >= 0; --i) {
@@ -38,7 +38,7 @@ void update(std::vector<double>& x, Int k, std::vector<double>& H, Int ldh,
     }
   }
   // x += V * y
-  for (Int j = 0; j <= k; ++j) vectorAdd(x, V[j], y[j]);
+  for (Int j = 0; j <= k; ++j) vectorAdd(x, 1.0, V[j], y[j]);
 }
 
 Int Gmres(const AbstractMatrix* M, const AbstractMatrix* P,
@@ -74,7 +74,7 @@ Int Gmres(const AbstractMatrix* M, const AbstractMatrix* P,
   // preconditioned residual P^-1 * (b - M * x)
   std::vector<double> r = x;
   M->apply(r);
-  vectorAdd(r, b, 1.0, -1.0);
+  vectorAdd(r, -1.0, b, 1.0);
   if (P) P->apply(r);
   double beta = norm2(r);
 
@@ -103,7 +103,7 @@ Int Gmres(const AbstractMatrix* M, const AbstractMatrix* P,
     V.push_back(w);
     for (Int k = 0; k <= i; ++k) {
       H[k + ldh * i] = dotProd(V.back(), V[k]);
-      vectorAdd(V.back(), V[k], -H[k + ldh * i]);
+      vectorAdd(V.back(), 1.0, V[k], -H[k + ldh * i]);
     }
     H[i + 1 + ldh * i] = norm2(V.back());
 
@@ -113,7 +113,7 @@ Int Gmres(const AbstractMatrix* M, const AbstractMatrix* P,
     for (Int k = 0; k <= i; ++k) {
       double temp = dotProd(V.back(), V[k]);
       H[k + ldh * i] += temp;
-      vectorAdd(V.back(), V[k], -temp);
+      vectorAdd(V.back(), 1.0, V[k], -temp);
     }
     H[i + 1 + ldh * i] = norm2(V.back());
     // }
@@ -152,7 +152,7 @@ Int Cg(const AbstractMatrix* M, const AbstractMatrix* P,
 
   std::vector<double> r = x;
   M->apply(r);
-  vectorAdd(r, b, 1.0, -1.0);
+  vectorAdd(r, -1.0, b, 1.0);
 
   std::vector<double> z = r;
   if (P) P->apply(z);
@@ -168,8 +168,8 @@ Int Cg(const AbstractMatrix* M, const AbstractMatrix* P,
     w = p;
     M->apply(w);
     double alpha = rho_old / dotProd(p, w);
-    vectorAdd(x, p, alpha);
-    vectorAdd(r, w, -alpha);
+    vectorAdd(x, 1.0, p, alpha);
+    vectorAdd(r, 1.0, w, -alpha);
 
     z = r;
     if (P) P->apply(z);
@@ -177,12 +177,11 @@ Int Cg(const AbstractMatrix* M, const AbstractMatrix* P,
 
     if (norm2(r) < tol * norm_b) break;
 
-    vectorAdd(p, z, 1.0, rho_new / rho_old);
+    vectorAdd(p, rho_new / rho_old, z, 1.0);
     rho_old = rho_new;
     ++iter;
 
     if (isNanVector(x)) {
-      // log->printDevInfo("CG: x is nan at iter %d\n", (int)iter);
       break;
     }
   }

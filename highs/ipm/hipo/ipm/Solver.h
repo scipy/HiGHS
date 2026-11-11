@@ -4,72 +4,66 @@
 #include <string>
 
 #include "Control.h"
-#include "FactorHiGHSSolver.h"
+#include "FactorHighsSolver.h"
 #include "Info.h"
 #include "Iterate.h"
 #include "LinearSolver.h"
-#include "LogHighs.h"
 #include "Model.h"
 #include "Options.h"
 #include "Parameters.h"
 #include "Status.h"
 #include "ipm/hipo/auxiliary/Auxiliary.h"
 #include "ipm/hipo/auxiliary/IntConfig.h"
+#include "ipm/hipo/auxiliary/Logger.h"
 #include "ipm/hipo/auxiliary/VectorOperations.h"
-#include "ipm/hipo/factorhighs/FactorHiGHS.h"
+#include "ipm/hipo/factorhighs/FactorHighs.h"
 #include "ipm/ipx/lp_solver.h"
 #include "lp_data/HighsCallback.h"
+#include "lp_data/HighsInfo.h"
+#include "lp_data/HighsLp.h"
 #include "util/HighsSparseMatrix.h"
 #include "util/HighsTimer.h"
 
 namespace hipo {
 
+using isFailure = bool;
+using shouldTerminate = bool;
+using isSuccess = bool;
+
 class Solver {
-  // LP model
   Model model_;
-
-  // Linear solver interface
   std::unique_ptr<LinearSolver> LS_;
-
-  // Iterate object interface
+  std::unique_ptr<KktMatrix> kkt_;
   std::unique_ptr<Iterate> it_;
-
-  // Size of the problem
   Int m_{}, n_{};
-
-  // Iterations counters
-  Int iter_{}, bad_iter_{};
-
-  // Stepsizes
+  Int iter_{};
   double alpha_primal_{}, alpha_dual_{};
-
-  // Coefficient for reduction of mu
   double sigma_{};
-
-  // Values for static regularisation
   Regularisation regul_{};
-
-  // General information
   Info info_;
-
   Control control_;
-
-  // Run-time options
   Options options_{};
-
-  // Interface to ipx
+  Options options_orig_{};
+  HighsOptions Hoptions_{};
   ipx::LpSolver ipx_lps_;
-
-  // Interface to Highs logging
-  LogHighs logH_;
-
+  Logger logger_;
   double start_time_;
+
+  // Status of ipm iterations up to pd feas solution found (potentially using
+  // ipx to refine, in which case the ipx status_ipm is converted to hipo
+  // status).
+  Status status_phase1 = kStatusNotSet;
+
+  // Status of ipm iterations after pd feas solution found, or status of
+  // crossover if it is run, in which case ipx status_crossover is converted to
+  // hipo status.
+  Status status_phase2 = kStatusNotSet;
 
  public:
   // ===================================================================================
-  // Load an LP:
+  // Load an LP or QP:
   //
-  //  min   obj^T * x
+  //  min   obj^T * x + 1/2 * x^T * Q * x
   //  s.t.  Ax {<=,=,>=} rhs
   //        lower <= x <= upper
   //
@@ -77,28 +71,17 @@ class Solver {
   //  <= : add slack    0 <= s_i <= +inf
   //  >= : add slack -inf <= s_i <=    0
   // ===================================================================================
-  Int load(const Int num_var,        // number of variables
-           const Int num_con,        // number of constraints
-           const double* obj,        // objective function c
-           const double* rhs,        // rhs vector b
-           const double* lower,      // lower bound vector
-           const double* upper,      // upper bound vector
-           const Int* A_ptr,         // column pointers of A
-           const Int* A_rows,        // row indices of A
-           const double* A_vals,     // values of A
-           const char* constraints,  // type of constraints
-           double offset             // offset from presolve
-  );
+  Int load(const HighsLp& lp, const HighsHessian& Q);
 
   // ===================================================================================
   // Specify options, callback and timer.
   // ===================================================================================
-  void setOptions(const Options& options);
+  void setOptions(const HighsOptions& highs_options);
   void setCallback(HighsCallback& callback);
   void setTimer(const HighsTimer& timer);
 
   // ===================================================================================
-  // Solve the LP
+  // Solve the LP or QP
   // ===================================================================================
   void solve();
 
@@ -112,56 +95,49 @@ class Solver {
   Int getBasicSolution(std::vector<double>& x, std::vector<double>& slack,
                        std::vector<double>& y, std::vector<double>& z,
                        Int* cbasis, Int* vbasis) const;
-  void getSolution(std::vector<double>& x, std::vector<double>& slack,
-                   std::vector<double>& y, std::vector<double>& z) const;
   const Info& getInfo() const;
+  void getOriginalDims(Int& num_row, Int& num_col) const;
 
-  // check the status of the solver
   bool solved() const;
   bool stopped() const;
   bool failed() const;
 
+  void setIpxTimerOffset(const double offset) {
+    this->ipx_lps_.setTimerOffset(offset);
+  }
+
  private:
   // Functions to run the various stages of the ipm
+  void doSolve();
   void runIpm();
-  bool initialise();
-  void terminate();
-  bool prepareIter();
-  bool predictor();
-  bool correctors();
+  isFailure initialise();
+  shouldTerminate prepareIter();
+  isFailure predictor();
+  isFailure correctors();
 
   // ===================================================================================
-  // Load model and parameters into ipx and set the last iterate as starting
-  // point.
+  // Interface with IPX
   // ===================================================================================
-  bool prepareIpx();
-
-  // ===================================================================================
-  // If solution is not precise, try running ipx starting from last iterate.
-  // If solution is precise and crossover is requested, run ipx.
-  // ===================================================================================
+  isFailure prepareIpx();
+  isFailure prepareIpxStartingPoint();
+  void runIpx();
   void refineWithIpx();
-
-  // ===================================================================================
-  // Run crossover with ipx directly from the last iterate, without refining it
-  // with ipx.
-  // ===================================================================================
-  void runCrossover();
+  void crossoverWithIpx();
 
   // ===================================================================================
   // Determine the maximum number of correctors to use, based on the relative
   // cost of factorisation and solve. Based on the heuristic in "Multiple
   // Centrality Corrections in a Primal-Dual Method for Linear Programming".
   // ===================================================================================
-  void maxCorrectors();
+  void chooseNumberOfCorrectors();
 
   // ===================================================================================
   // Solve:
   //
   // ___Augmented system___
   //
-  //      [ -Theta^{-1}  A^T ] [ Deltax ] = [ res7 ]
-  //      [ A            0   ] [ Deltay ] = [ res1 ]
+  //      [ -Theta^{-1}-Q  A^T ] [ Deltax ] = [ res7 ]
+  //      [ A              0   ] [ Deltay ] = [ res1 ]
   //
   // with:
   //  res7 = res4 - Xl^{-1} * (res5 + Zl * res2) + Xu^{-1} * (res6 - Zu * res3)
@@ -174,13 +150,17 @@ class Solver {
   //
   // ___Normal equations___
   //
-  //      A * Theta * A^T * Deltay = res8
-  //      Delta x = Theta * (A^T* Deltay - res7)
+  //      A * (Theta^{-1}+Q)^{-1} * A^T * Deltay = res8
+  //      Delta x = (Theta^{-1}+Q)^{-1} * (A^T* Deltay - res7)
   //
   // with:
-  //  res8 = res1 + A * Theta * res7
+  //  res8 = res1 + A * (Theta^{-1}+Q)^{-1} * res7
+  //
+  // NB: normal equations available only if Q is zero or diagonal.
   // ===================================================================================
-  bool solveNewtonSystem(NewtonDir& delta);
+  isFailure solveNewtonSystem(NewtonDir& delta);
+  void solve2x2(NewtonDir& delta, const Residuals& rhs);
+  void solve6x6(NewtonDir& delta, const Residuals& rhs);
 
   // ===================================================================================
   // Reconstruct the solution of the full Newton system:
@@ -190,7 +170,13 @@ class Solver {
   //  Deltazl = Xl^{-1} * (res5 - zl * Deltaxl)
   //  Deltazu = Xu^{-1} * (res6 - zu * Deltaxu)
   // ===================================================================================
-  bool recoverDirection(NewtonDir& delta);
+  void recoverDirection(NewtonDir& delta, const Residuals& rhs);
+
+  // ===================================================================================
+  // Functions for iterative refinement on the large 6x6 system
+  // ===================================================================================
+  void refine(NewtonDir& delta);
+  double computeOmega(const NewtonDir& delta) const;
 
   // ===================================================================================
   // Steps to boundary are computed so that
@@ -236,7 +222,7 @@ class Solver {
   // Compute the Mehrotra starting point.
   // This requires to solve two linear systems with matrix A*A^T.
   // ===================================================================================
-  bool startingPoint();
+  isFailure startingPoint();
 
   // ===================================================================================
   // Compute the sigma to use for affine scaling direction or correctors, based
@@ -274,7 +260,7 @@ class Solver {
   // for linear programming" and Colombo, Gondzio, "Further Development of
   // Multiple Centrality Correctors for Interior Point Methods".
   // ===================================================================================
-  bool centralityCorrectors();
+  isFailure centralityCorrectors();
 
   // ===================================================================================
   // Given the current direction delta and the latest corrector, compute the
@@ -287,13 +273,14 @@ class Solver {
   // ===================================================================================
   // If the current iterate is nan or inf, abort the iterations.
   // ===================================================================================
-  bool checkIterate();
+  shouldTerminate checkIterate();
 
   // ===================================================================================
-  // If too many bad iterations happened consecutively, abort the iterations.
-  // Also, detect if the problem is primal or dual infeasible.
+  // Stop if detection is detected, or if the problem is primal or dual
+  // infeasible.
   // ===================================================================================
-  bool checkBadIter();
+  shouldTerminate checkStagnation();
+  shouldTerminate checkBadIter();
 
   // ===================================================================================
   // Check the termination criterion:
@@ -301,36 +288,47 @@ class Solver {
   //  - dual infeasiblity    < tolerance
   //  - relative dual gap    < tolerance
   // ===================================================================================
-  bool checkTermination();
+  shouldTerminate checkTermination();
+  isSuccess checkTerminationKkt();
 
   // ===================================================================================
   // Check for user interrupt or time limit
   // ===================================================================================
-  bool checkInterrupt();
+  shouldTerminate checkInterrupt();
 
   // ===================================================================================
-  // Check if the current status has various properties.
+  // Check and set status
   // ===================================================================================
-  bool statusIsSolved() const;
-  bool statusIsStopped() const;
-  bool statusIsFailed() const;
   bool statusNeedsRefinement() const;
   bool statusAllowsCrossover() const;
+  bool refinementIsOn() const;
   bool crossoverIsOn() const;
+  bool errorOrInterrupt() const;
 
-  // ===================================================================================
-  // Compute the normwise and componentwise backward error for the large 6x6
-  // linear system
-  // ===================================================================================
-  void backwardError(const NewtonDir& delta) const;
+  void setStatus1(Status status);
+  void setStatus2(Status status);
+  void setStatus(Status status);
+  Status getStatus1() const;
+  Status getStatus2() const;
+  Status getStatus() const;
+  void finaliseStatus();
 
   // ===================================================================================
   // Print to screen
   // ===================================================================================
   void printInfo() const;
   void printHeader() const;
-  void printOutput() const;
+  void printOutput(bool reset = false) const;
   void printSummary() const;
+
+  void resetOptions();
+  void reset();
+  void resetToBestIter(Int iter, bool print = true);
+
+  isFailure initialiseLinearSolver();
+  isSuccess switchToMultifrontal();
+
+  void chooseAllowedParallelism(const HighsOptions& highs_options);
 };
 
 }  // namespace hipo

@@ -1,7 +1,9 @@
 #ifndef FACTORHIGHS_DENSE_FACT_H
 #define FACTORHIGHS_DENSE_FACT_H
 
-#include "FactorHiGHSSettings.h"
+#include "DataCollector.h"
+#include "FactorHighsOptions.h"
+#include "FactorHighsSettings.h"
 #include "ipm/hipo/auxiliary/IntConfig.h"
 
 namespace hipo {
@@ -30,14 +32,14 @@ namespace hipo {
 
 // dense factorisation kernel
 Int denseFactK(char uplo, Int n, double* A, Int lda, Int* pivot_sign,
-               double thresh, const Regul& regul, double* totalreg, Int* swaps,
-               double* pivot_2x2, DataCollector& data);
+               double thresh, double* totalreg, Int* swaps, double* pivot_2x2,
+               DataCollector& data, const FHoptions& options);
 
 // dense partial factorisation, in "hybrid formats"
-Int denseFactFH(char format, Int n, Int k, Int nb, double* A, double* B,
-                const Int* pivot_sign, double thresh, const Regul& regul,
-                double* totalreg, Int* swaps, double* pivot_2x2, bool parnode,
-                DataCollector& data);
+Int denseFactFH(char format, Int n, Int k, double* A, double* B,
+                const Int* pivot_sign, double thresh, double* totalreg,
+                Int* swaps, double* pivot_2x2, DataCollector& data,
+                const FHoptions& options);
 
 // function to convert A from lower packed, to lower-blocked-hybrid format
 Int denseFactFP2FH(double* A, Int nrow, Int ncol, Int nb, DataCollector& data);

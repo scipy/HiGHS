@@ -70,6 +70,11 @@ std::array<char, 32> highsDoubleToString(const double val,
                                          const double tolerance);
 
 /**
+ * @brief Convert a MIP relative gap number to a string
+ */
+std::array<char, 32> highsGapToString(const double gap);
+
+/**
  * @brief For _single-line_ user logging with message type notification
  */
 // Printing format: must contain exactly one "\n" at end of format
@@ -81,6 +86,11 @@ void highsLogUser(const HighsLogOptions& log_options_, const HighsLogType type,
  */
 void highsLogDev(const HighsLogOptions& log_options_, const HighsLogType type,
                  const char* format, ...);
+
+/**
+ * @brief Gets filename extension
+ */
+std::string getFilenameExt(const std::string& filename);
 
 /**
  * @brief Replaces fprintf(file,... so that when file=stdout highsLogUser is
@@ -95,17 +105,22 @@ void highsFprintfString(FILE* file, const HighsLogOptions& log_options_,
  * indicated by null pointer
  */
 void highsReportDevInfo(const HighsLogOptions* log_options,
-                        const std::string line);
+                        const std::string& line);
 
-void highsOpenLogFile(HighsOptions& options, const std::string log_file);
+void highsOpenLogFile(HighsOptions& options, const std::string& log_file);
 
 void highsReportLogOptions(const HighsLogOptions& log_options_);
+void highsPrintStringAsHeading(const std::string& text);
 
 std::string highsFormatToString(const char* format, ...);
 
 const std::string highsBoolToString(const bool b,
                                     const HighsInt field_width = 2);
 
-const std::string highsInsertMdEscapes(const std::string from_string);
-
+const std::string highsIntToPlural(const HighsInt i, const bool y = false);
+const std::string highsIntToBe(const HighsInt i);
+const std::string highsInsertMdEscapes(const std::string& from_string);
+const std::string highsInsertMdId(const std::string& from_string);
+const std::string highsTimeToString(const double time);
+const std::string highsTimeSecondToString(const double time);
 #endif

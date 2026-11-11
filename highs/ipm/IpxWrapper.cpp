@@ -1,3 +1,4 @@
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 /*                                                                       */
 /*    This file is part of the HiGHS linear optimization suite           */
 /*                                                                       */
@@ -12,8 +13,10 @@
 
 #include <cassert>
 
+#include "HighsExternalApi.h"
 #include "lp_data/HighsOptions.h"
 #include "lp_data/HighsSolution.h"
+#include "util/stringutil.h"
 
 using std::min;
 
@@ -62,6 +65,10 @@ HighsStatus solveLpIpx(const HighsOptions& options, HighsTimer& timer,
   resetModelStatusAndHighsInfo(model_status, highs_info);
   // Create the LpSolver instance
   ipx::LpSolver lps;
+  // Use the current HiGHS time as an offset for the lps.control_
+  // elapsed time
+  lps.setTimerOffset(timer.read());
+
   // Set IPX parameters
   //
   // Cannot set internal IPX parameters directly since they are
@@ -124,8 +131,9 @@ HighsStatus solveLpIpx(const HighsOptions& options, HighsTimer& timer,
 
   parameters.analyse_basis_data =
       kHighsAnalysisLevelNlaData & options.highs_analysis_level;
-  // Determine the run time allowed for IPX
-  parameters.time_limit = options.time_limit - timer.read();
+  // Now that the lps.control_ elapsed time includes the HiGHS time,
+  // can use the HiGHS time limit
+  parameters.time_limit = options.time_limit;
   parameters.ipm_maxiter =
       options.ipm_iteration_limit - highs_info.ipm_iteration_count;
   // Determine if crossover is to be run or not
@@ -191,6 +199,13 @@ HighsStatus solveLpIpx(const HighsOptions& options, HighsTimer& timer,
   if (report_solve_data) reportSolveData(options.log_options, ipx_info);
   highs_info.ipm_iteration_count += (HighsInt)ipx_info.iter;
   highs_info.crossover_iteration_count += (HighsInt)ipx_info.updates_crossover;
+  // Record the outcome of any centring, since the model status only
+  // indicates whether the LP is solved. Centring is not tried if the
+  // IPM stops before reaching optimality
+  highs_info.centring_status = !ipx_info.centring_tried ? kCentringStatusNone
+                               : ipx_info.centring_success
+                                   ? kCentringStatusSuccess
+                                   : kCentringStatusFailed;
 
   // If not solved...
   if (solve_status != IPX_STATUS_solved) {
@@ -398,26 +413,43 @@ HighsStatus solveLpIpx(const HighsOptions& options, HighsTimer& timer,
   return return_status;
 }
 
-#ifdef HIPO
 HighsStatus solveLpHipo(HighsLpSolverObject& solver_object) {
-  return solveLpHipo(solver_object.options_, solver_object.timer_,
-                     solver_object.lp_, solver_object.basis_,
-                     solver_object.solution_, solver_object.model_status_,
-                     solver_object.highs_info_, solver_object.callback_);
+  return solveHipo(solver_object.options_, solver_object.timer_,
+                   solver_object.lp_, HighsHessian{}, solver_object.basis_,
+                   solver_object.solution_, solver_object.model_status_,
+                   solver_object.highs_info_, solver_object.callback_);
 }
 
-#ifdef HIPO_USES_OPENBLAS
-// function to set number of threads of openblas
-extern "C" {
-void openblas_set_num_threads(int num_threads);
+HighsStatus solveQpHipo(HighsQpSolverObject& solver_object) {
+  return solveHipo(solver_object.options_, solver_object.timer_,
+                   solver_object.model_.lp_, solver_object.model_.hessian_,
+                   solver_object.basis_, solver_object.solution_,
+                   solver_object.model_status_, solver_object.highs_info_,
+                   solver_object.callback_);
 }
-#endif
 
-HighsStatus solveLpHipo(const HighsOptions& options, HighsTimer& timer,
-                        const HighsLp& lp, HighsBasis& highs_basis,
-                        HighsSolution& highs_solution,
-                        HighsModelStatus& model_status, HighsInfo& highs_info,
-                        HighsCallback& callback) {
+static HighsInt prepareOpenBLAS(const HighsOptions& options) {
+  // OpenBLAS threads are a process-wide setting, so the user can opt out of
+  // changing them
+  if (!options.hipo_serial_blas) return 0;
+
+  // force openblas to run in serial, for determinism and better performance
+  // no-op if openblas is not used
+  const int threads_used = HighsExtras::blas::openblas_set_num_threads(1);
+  if (is_substring_case(HighsExtras::blas::getInfo()->provider, "openblas") &&
+      threads_used != 1) {
+    highsLogUser(options.log_options, HighsLogType::kError,
+                 "OpenBLAS failed to set the number of threads to 1\n");
+    return 1;
+  }
+  return 0;
+}
+
+HighsStatus solveHipo(const HighsOptions& options, HighsTimer& timer,
+                      const HighsLp& lp, const HighsHessian& Q,
+                      HighsBasis& highs_basis, HighsSolution& highs_solution,
+                      HighsModelStatus& model_status, HighsInfo& highs_info,
+                      HighsCallback& callback) {
   // Use HiPO
   //
   // Can return HighsModelStatus (HighsStatus) values:
@@ -450,142 +482,51 @@ HighsStatus solveLpHipo(const HighsOptions& options, HighsTimer& timer,
   // Indicate that no imprecise solution has (yet) been found
   resetModelStatusAndHighsInfo(model_status, highs_info);
 
-#ifdef HIPO_USES_OPENBLAS
-  // force openblas to run in serial, for determinism and better performance
-  openblas_set_num_threads(1);
-#endif
-
-  // Create solver instance
-  hipo::Solver hipo{};
-
-  hipo::Options hipo_options{};
-
-  hipo_options.display = true;
-  if (!options.output_flag | !options.log_to_console)
-    hipo_options.display = false;
-
-  hipo_options.log_options = &options.log_options;
-
-  // Debug option is already considered through log_options.log_dev_level in
-  // hipo::LogHighs::debug
-
-  hipo_options.timeless_log = options.timeless_log;
-  hipo_options.feasibility_tol = std::min(options.primal_feasibility_tolerance,
-                                          options.dual_feasibility_tolerance);
-  hipo_options.optimality_tol = options.ipm_optimality_tolerance;
-  hipo_options.crossover_tol = options.start_crossover_tolerance;
-
-  if (options.kkt_tolerance != kDefaultKktTolerance) {
-    hipo_options.feasibility_tol = options.kkt_tolerance;
-    hipo_options.optimality_tol = 1e-1 * options.kkt_tolerance;
-    hipo_options.crossover_tol = 1e-1 * options.kkt_tolerance;
-    highsLogUser(options.log_options, HighsLogType::kInfo,
-                 "IpxWrapper: feasibility_tol = %g; optimality_tol = %g; "
-                 "crossover_tol = %g\n",
-                 hipo_options.feasibility_tol, hipo_options.optimality_tol,
-                 hipo_options.crossover_tol);
-  }
-
-  // hipo uses same timer as highs, so it is fine to pass the same time limit
-  hipo_options.time_limit = options.time_limit;
-
-  hipo_options.max_iter =
-      options.ipm_iteration_limit - highs_info.ipm_iteration_count;
-
-  if (options.run_crossover == kHighsOnString)
-    hipo_options.crossover = hipo::kOptionCrossoverOn;
-  else if (options.run_crossover == kHighsOffString)
-    hipo_options.crossover = hipo::kOptionCrossoverOff;
-  else {
-    assert(options.run_crossover == kHighsChooseString);
-    hipo_options.crossover = hipo::kOptionCrossoverChoose;
-  }
-
-  // Potentially control if ipx is used for refinement and if it is displayed
-  // hipo_options.refine_with_ipx = true;
-  // hipo_options.display_ipx = true;
-
-  // if option parallel is on, it can be refined by option hipo_parallel_type
-  if (options.parallel == kHighsOnString) {
-    if (options.hipo_parallel_type == kHipoTreeString)
-      hipo_options.parallel = hipo::kOptionParallelTreeOnly;
-    else if (options.hipo_parallel_type == kHipoNodeString)
-      hipo_options.parallel = hipo::kOptionParallelNodeOnly;
-    else if (options.hipo_parallel_type == kHipoBothString)
-      hipo_options.parallel = hipo::kOptionParallelOn;
-    else {
-      highsLogUser(options.log_options, HighsLogType::kError,
-                   "Unknown value of option %s\n", kHipoParallelString.c_str());
-      model_status = HighsModelStatus::kSolveError;
-      return HighsStatus::kError;
-    }
-  }
-  // otherwise, option hipo_parallel_type is ignored
-  else if (options.parallel == kHighsOffString)
-    hipo_options.parallel = hipo::kOptionParallelOff;
-  else {
-    assert(options.parallel == kHighsChooseString);
-    hipo_options.parallel = hipo::kOptionParallelChoose;
-  }
-
-  // Parse hipo_system option
-  if (options.hipo_system == kHipoAugmentedString) {
-    hipo_options.nla = hipo::kOptionNlaAugmented;
-  } else if (options.hipo_system == kHipoNormalEqString) {
-    hipo_options.nla = hipo::kOptionNlaNormEq;
-  } else if (options.hipo_system == kHighsChooseString) {
-    hipo_options.nla = hipo::kOptionNlaChoose;
-  } else {
-    highsLogUser(options.log_options, HighsLogType::kError,
-                 "Unknown value of option %s\n", kHipoSystemString.c_str());
+  if (prepareOpenBLAS(options)) {
     model_status = HighsModelStatus::kSolveError;
     return HighsStatus::kError;
   }
 
-  // block size option
-  hipo_options.block_size = options.hipo_block_size;
+  // Create solver instance
+  hipo::Solver hipo{};
+  // This creates ipx::LpSolver ipx_lps_, in case HiPO has to switch
+  // to IPX, so use the current HiGHS time as an offset for the
+  // ipx_lps.control_ elapsed time
+  hipo.setIpxTimerOffset(timer.read());
 
-  hipo.setOptions(hipo_options);
+  if (options.kkt_tolerance != kDefaultKktTolerance) {
+    highsLogUser(options.log_options, HighsLogType::kInfo,
+                 "IpxWrapper: feasibility_tol = %g; optimality_tol = %g; "
+                 "crossover_tol = %g\n",
+                 options.kkt_tolerance, 1e-1 * options.kkt_tolerance,
+                 1e-1 * options.kkt_tolerance);
+  }
+
+  hipo.setOptions(options);
   hipo.setTimer(timer);
   hipo.setCallback(callback);
 
-  // Transform problem to correct formulation
-  hipo::Int num_col, num_row;
-  std::vector<double> obj, rhs, lower, upper, Aval;
-  std::vector<hipo::Int> Aptr, Aind;
-  std::vector<char> constraints;
-  double offset;
-  fillInIpxData(lp, num_col, num_row, offset, obj, lower, upper, Aptr, Aind,
-                Aval, rhs, constraints);
-  highsLogUser(options.log_options, HighsLogType::kInfo,
-               "HiPO model has %" HIGHSINT_FORMAT " rows, %" HIGHSINT_FORMAT
-               " columns and %" HIGHSINT_FORMAT " nonzeros\n",
-               num_row, num_col, Aptr[num_col]);
-
   // Load the problem
-  hipo::Int load_status = hipo.load(
-      num_col, num_row, obj.data(), rhs.data(), lower.data(), upper.data(),
-      Aptr.data(), Aind.data(), Aval.data(), constraints.data(), offset);
-
+  hipo::Int load_status = hipo.load(lp, Q);
   if (load_status) {
     model_status = HighsModelStatus::kSolveError;
     return HighsStatus::kError;
   }
+
+  // This information about the problem loaded into HiPO is needed for later
+  HighsInt num_row, num_col;
+  hipo.getOriginalDims(num_row, num_col);
+  std::vector<double> rhs;
+  std::vector<char> constraints;
+  fillInRhsAndConstraints(lp, rhs, constraints);
 
   hipo.solve();
 
   // const bool report_solve_data =
   //    kHighsAnalysisLevelSolverSummaryData & options.highs_analysis_level;
 
-  // Differently from IPX, HiPO returns a single status. So, dealing with
-  // statuses is a bit different.
   // hipo.solved(), hipo.stopped(), hipo.failed() can be used to query if the
   // status belongs to the solved, stopped or failed group.
-  // If primal-dual feasible solution is found (non-vertex solution), then the
-  // status is kStatusPDfeas.
-  // If crossover is successful, then the status is kStatusBasic.
-  // Otherwise, the specific crossover status can be accessed through the
-  // ipx_info stored in hipo_info.
 
   // Get solver and solution information.
   const hipo::Info hipo_info = hipo.getInfo();
@@ -603,14 +544,14 @@ HighsStatus solveLpHipo(const HighsOptions& options, HighsTimer& timer,
   }
 
   // Report crossover status
-  const HighsStatus crossover_return_status =
-      reportHipoCrossoverStatus(options, hipo_info.ipx_info.status_crossover);
+  const HighsStatus crossover_return_status = reportHipoCrossoverStatus(
+      options, hipo_info.ipx_info.status_crossover, !Q.empty());
   if (crossover_return_status == HighsStatus::kError) {
     model_status = HighsModelStatus::kSolveError;
     return HighsStatus::kError;
   }
 
-  // Failures should have been handled. Status should be stopper or solved.
+  // Failures should have been handled. Status should be stopped or solved.
   if (ipxStatusError(!hipo.solved() && !hipo.stopped(), options, "Hipo",
                      "status should be solved or stopped but value is",
                      solve_status))
@@ -670,8 +611,7 @@ HighsStatus solveLpHipo(const HighsOptions& options, HighsTimer& timer,
   }
 
   // Status should be optimal or imprecise
-  if (ipxStatusError(solve_status != hipo::kStatusPDFeas &&
-                         solve_status != hipo::kStatusBasic &&
+  if (ipxStatusError(solve_status != hipo::kStatusOptimal &&
                          solve_status != hipo::kStatusImprecise,
                      options, "Hipo",
                      "status should be optimal or imprecise but value is",
@@ -679,7 +619,6 @@ HighsStatus solveLpHipo(const HighsOptions& options, HighsTimer& timer,
     return HighsStatus::kError;
 
   const bool have_basic_solution =
-      hipo_info.ipx_used &&
       hipo_info.ipx_info.status_crossover != IPX_STATUS_not_run;
 
   const bool imprecise_solution =
@@ -741,7 +680,6 @@ HighsStatus solveLpHipo(const HighsOptions& options, HighsTimer& timer,
   }
   return return_status;
 }
-#endif
 
 void fillInIpxData(const HighsLp& lp, ipx::Int& num_col, ipx::Int& num_row,
                    double& offset, std::vector<double>& obj,
@@ -775,36 +713,15 @@ void fillInIpxData(const HighsLp& lp, ipx::Int& num_col, ipx::Int& num_row,
 
   const HighsInt num_slack = general_bounded_rows.size();
 
-  // For each row except free rows add entry to char array and set up rhs
-  // vector
-  rhs.reserve(num_row);
-  constraint_type.reserve(num_row);
-
-  for (int row = 0; row < num_row; row++) {
-    if (lp.row_lower_[row] > -kHighsInf && lp.row_upper_[row] >= kHighsInf) {
-      rhs.push_back(lp.row_lower_[row]);
-      constraint_type.push_back('>');
-    } else if (lp.row_lower_[row] <= -kHighsInf &&
-               lp.row_upper_[row] < kHighsInf) {
-      rhs.push_back(lp.row_upper_[row]);
-      constraint_type.push_back('<');
-    } else if (lp.row_lower_[row] == lp.row_upper_[row]) {
-      rhs.push_back(lp.row_upper_[row]);
-      constraint_type.push_back('=');
-    } else if (lp.row_lower_[row] > -kHighsInf &&
-               lp.row_upper_[row] < kHighsInf) {
-      // general bounded
-      rhs.push_back(0);
-      constraint_type.push_back('=');
-    }
-  }
+  fillInRhsAndConstraints(lp, rhs, constraint_type);
 
   std::vector<HighsInt> reduced_rowmap(lp.num_row_, -1);
   if (free_rows.size() > 0) {
     HighsInt counter = 0;
     HighsInt findex = 0;
+    const HighsInt free_rows_size = static_cast<HighsInt>(free_rows.size());
     for (HighsInt row = 0; row < lp.num_row_; row++) {
-      if (free_rows[findex] == row) {
+      if (findex < free_rows_size && free_rows[findex] == row) {
         findex++;
         continue;
       } else {
@@ -850,7 +767,7 @@ void fillInIpxData(const HighsLp& lp, ipx::Int& num_col, ipx::Int& num_row,
   }
 
   for (HighsInt k = 0; k < num_slack; k++) {
-    Ai.push_back((ipx::Int)general_bounded_rows[k]);
+    Ai.push_back((ipx::Int)reduced_rowmap[general_bounded_rows[k]]);
     Ax.push_back(-1);
   }
 
@@ -879,7 +796,36 @@ void fillInIpxData(const HighsLp& lp, ipx::Int& num_col, ipx::Int& num_row,
   for (HighsInt col = 0; col < lp.num_col_; col++) {
     obj[col] = (HighsInt)lp.sense_ * lp.col_cost_[col];
   }
-  obj.insert(obj.end(), num_slack, 0);
+}
+
+void fillInRhsAndConstraints(const HighsLp& lp, std::vector<double>& rhs,
+                             std::vector<char>& constraint_type) {
+  // For each row except free rows add entry to char array and set up rhs
+  // vector
+
+  const HighsInt num_row = lp.num_row_;
+
+  rhs.reserve(num_row);
+  constraint_type.reserve(num_row);
+
+  for (int row = 0; row < num_row; row++) {
+    if (lp.row_lower_[row] > -kHighsInf && lp.row_upper_[row] >= kHighsInf) {
+      rhs.push_back(lp.row_lower_[row]);
+      constraint_type.push_back('>');
+    } else if (lp.row_lower_[row] <= -kHighsInf &&
+               lp.row_upper_[row] < kHighsInf) {
+      rhs.push_back(lp.row_upper_[row]);
+      constraint_type.push_back('<');
+    } else if (lp.row_lower_[row] == lp.row_upper_[row]) {
+      rhs.push_back(lp.row_upper_[row]);
+      constraint_type.push_back('=');
+    } else if (lp.row_lower_[row] > -kHighsInf &&
+               lp.row_upper_[row] < kHighsInf) {
+      // general bounded
+      rhs.push_back(0);
+      constraint_type.push_back('=');
+    }
+  }
 }
 
 HighsStatus reportIpxSolveStatus(const HighsOptions& options,
@@ -994,7 +940,8 @@ HighsStatus reportIpxIpmCrossoverStatus(const HighsOptions& options,
 }
 
 bool ipxStatusError(const bool status_error, const HighsOptions& options,
-                    std::string solver, std::string message, const int value) {
+                    const std::string& solver, const std::string& message,
+                    const int value) {
   if (status_error) {
     if (value < 0) {
       highsLogUser(options.log_options, HighsLogType::kError, "%s: %s\n",
@@ -1207,7 +1154,6 @@ void reportIpmNoProgress(const HighsOptions& options,
                ipx_info.abs_dresidual);
 }
 
-#ifdef HIPO
 void reportHipoNoProgress(const HighsOptions& options,
                           const hipo::Info& hipo_info) {
   highsLogUser(options.log_options, HighsLogType::kWarning,
@@ -1220,7 +1166,6 @@ void reportHipoNoProgress(const HighsOptions& options,
                "No progress: max absolute   dual residual = %11.4g\n",
                hipo_info.d_res_abs);
 }
-#endif
 
 void getHighsNonVertexSolution(const HighsOptions& options, const HighsLp& lp,
                                const ipx::Int num_col, const ipx::Int num_row,
@@ -1248,7 +1193,6 @@ void getHighsNonVertexSolution(const HighsOptions& options, const HighsLp& lp,
                              num_row, x, slack, y, zl, zu, highs_solution);
 }
 
-#ifdef HIPO
 void getHipoNonVertexSolution(const HighsOptions& options, const HighsLp& lp,
                               const hipo::Int num_col, const hipo::Int num_row,
                               const std::vector<double>& rhs,
@@ -1268,7 +1212,6 @@ void getHipoNonVertexSolution(const HighsOptions& options, const HighsLp& lp,
   ipxSolutionToHighsSolution(options, lp, rhs, constraint_type, num_col,
                              num_row, x, slack, y, zl, zu, highs_solution);
 }
-#endif
 
 void reportSolveData(const HighsLogOptions& log_options,
                      const ipx::Info& ipx_info) {
@@ -1473,7 +1416,6 @@ void reportSolveData(const HighsLogOptions& log_options,
               ipx_info.volume_increase);
 }
 
-#ifdef HIPO
 HighsStatus reportHipoStatus(const HighsOptions& options,
                              const hipo::Int status, const hipo::Solver& hipo) {
   if (hipo.solved()) {
@@ -1481,57 +1423,27 @@ HighsStatus reportHipoStatus(const HighsOptions& options,
     return HighsStatus::kOk;
   }
 
-  // these are warnings
-  else if (status == hipo::kStatusTimeLimit) {
-    highsLogUser(options.log_options, HighsLogType::kWarning,
-                 "Hipo: Time limit\n");
-    return HighsStatus::kWarning;
-  } else if (status == hipo::kStatusUserInterrupt) {
-    highsLogUser(options.log_options, HighsLogType::kWarning,
-                 "Hipo: User interrupt\n");
-    return HighsStatus::kWarning;
-  } else if (status == hipo::kStatusMaxIter) {
-    highsLogUser(options.log_options, HighsLogType::kWarning,
-                 "Hipo: Reached maximum iterations\n");
-    return HighsStatus::kWarning;
-  } else if (status == hipo::kStatusNoProgress) {
-    highsLogUser(options.log_options, HighsLogType::kWarning,
-                 "Hipo: No progress\n");
-    return HighsStatus::kWarning;
-  } else if (status == hipo::kStatusImprecise) {
-    highsLogUser(options.log_options, HighsLogType::kWarning,
-                 "Hipo: Imprecise solution\n");
+  else if (hipo.stopped()) {
+    highsLogUser(options.log_options, HighsLogType::kWarning, "Hipo: %s\n",
+                 hipo::statusString((hipo::Status)status).c_str());
     return HighsStatus::kWarning;
   }
 
-  // these are errors
-  else if (status == hipo::kStatusError) {
-    highsLogUser(options.log_options, HighsLogType::kError,
-                 "Hipo: Internal error\n");
-  } else if (status == hipo::kStatusOoM) {
-    highsLogUser(options.log_options, HighsLogType::kError,
-                 "Hipo: Out of memory\n");
-  } else if (status == hipo::kStatusErrorAnalyse) {
-    highsLogUser(options.log_options, HighsLogType::kError,
-                 "Hipo: Error in analyse phase\n");
-  } else if (status == hipo::kStatusErrorFactorise) {
-    highsLogUser(options.log_options, HighsLogType::kError,
-                 "Hipo: Error in factorise phase\n");
-  } else if (status == hipo::kStatusErrorSolve) {
-    highsLogUser(options.log_options, HighsLogType::kError,
-                 "Hipo: Error in solve phase\n");
-  } else if (status == hipo::kStatusBadModel) {
-    highsLogUser(options.log_options, HighsLogType::kError,
-                 "Hipo: Invalid model\n");
-  } else {
-    highsLogUser(options.log_options, HighsLogType::kError,
-                 "Hipo: Unrecognized status\n");
+  else if (hipo.failed()) {
+    highsLogUser(options.log_options, HighsLogType::kError, "Hipo: %s\n",
+                 hipo::statusString((hipo::Status)status).c_str());
   }
   return HighsStatus::kError;
 }
 
 HighsStatus reportHipoCrossoverStatus(const HighsOptions& options,
-                                      const ipx::Int status) {
+                                      const ipx::Int status, bool is_qp) {
+  if (is_qp && options.run_crossover == kHighsOnString) {
+    highsLogUser(options.log_options, HighsLogType::kWarning,
+                 "Hipo: Crossover not available for QP\n");
+    return HighsStatus::kWarning;
+  }
+
   if (status == IPX_STATUS_not_run) {
     if (options.run_crossover == kHighsOnString) {
       // Warn if crossover not run and run_crossover option is "on"
@@ -1585,6 +1497,4 @@ HighsStatus reportHipoCrossoverStatus(const HighsOptions& options,
                  "Hipo: Crossover unrecognised status\n");
     return HighsStatus::kError;
   }
-  return HighsStatus::kError;
 }
-#endif

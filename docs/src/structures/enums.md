@@ -46,7 +46,7 @@ This defines the feasible values of a variable within a model:
 This defines the format of a [HighsHessian](@ref):
 
  * `kTriangular`: The lower triangular component of the Hessian is stored column-wise or, equivalently, the upper triangular component is stored row-wise 
- * `kSquare`: The whole Hessian ``Q`` is stored column-wise. This is for input only: internally the lower triangular component of ``(Q+Q^T)/2`` will be stored
+ * `kSquare`: The whole Hessian ``Q`` is stored column-wise. This is for input only: internally the Hessian is stored in `kTriangular` format
 
 ## SolutionStatus
 
@@ -62,6 +62,16 @@ This defines the nature of any basis information:
 
  * `kBasisValidityInvalid`: There is no basisn information
  * `kBasisValidityValid`: The basis information is valid
+
+## CentringStatus
+
+This defines the outcome of any centring by the interior point
+solver. The model status only indicates whether the LP is solved, so
+it can be optimal even if the solution is not centred:
+
+ * `kCentringStatusNone`: Centring was not performed, either because it was not requested or because the interior point solver did not reach optimality
+ * `kCentringStatusFailed`: Centring was performed, but the solution could not be centred
+ * `kCentringStatusSuccess`: The solution is centred
 
 ## HighsModelStatus
 

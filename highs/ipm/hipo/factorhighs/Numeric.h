@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "DataCollector.h"
+#include "FactorHighsOptions.h"
 #include "SolveHandler.h"
 #include "Symbolic.h"
 #include "ipm/hipo/auxiliary/IntConfig.h"
@@ -22,46 +23,39 @@ class Numeric {
   // swaps of columns for each supernode, ordered locally within a block
   std::vector<std::vector<Int>> swaps_{};
 
-  // information about 2x2 pivots
+  // indicates whether a block of columns in a supernode has any non-identical
+  // swap
+  std::vector<std::vector<char>> any_swaps_{};
+
   std::vector<std::vector<double>> pivot_2x2_{};
-
-  // symbolic object
   const Symbolic* S_;
-
-  // object to handle solve phase in different formats
-  mutable std::unique_ptr<SolveHandler> SH_;
-
-  // lower triangle of original matrix, permuted
-  std::vector<Int> rowsA_{};
-  std::vector<Int> ptrA_{};
-  std::vector<double> valA_{};
-
-  // norms of columns of matrix
-  std::vector<double> inf_norm_cols_, one_norm_cols_;
-
   DataCollector* data_ = nullptr;
+  const FHoptions* options_;
+  std::unique_ptr<SolveHandler> SH_;
 
   friend class Factorise;
 
- public:
   // dynamic regularisation applied to the matrix
   std::vector<double> total_reg_{};
 
-  // Full solve with refinement
-  // Return also number of solves and final residual
-  Int solve(std::vector<double>& x, Int* solve_count = nullptr,
-            double* omega = nullptr) const;
+  void computeAnySwaps();
 
-  // Iterative refinement
-  std::pair<Int, double> refine(const std::vector<double>& rhs,
-                                std::vector<double>& x) const;
-  std::vector<double> residual(const std::vector<double>& rhs,
-                               const std::vector<double>& x) const;
-  std::vector<double> residualQuad(const std::vector<double>& rhs,
-                                   const std::vector<double>& x) const;
-  double computeOmega(const std::vector<double>& b,
-                      const std::vector<double>& x,
-                      const std::vector<double>& res) const;
+ public:
+  Int prepare();
+
+  Int solve(double* x) const;
+  Int solve(double* x, Int k) const;
+
+  Int forwardSolve(double* x) const;
+  Int diagSolve(double* x) const;
+  Int backwardSolve(double* x) const;
+
+  Int forwardSolve(double* x, Int k) const;
+  Int diagSolve(double* x, Int k) const;
+  Int backwardSolve(double* x, Int k) const;
+
+  void getReg(double* reg);
+  void inertia(Int& pos, Int& neg, Int& zero, double tol) const;
 };
 
 }  // namespace hipo
